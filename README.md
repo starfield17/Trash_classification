@@ -1,9 +1,9 @@
 # Trash_classification0
 一眼丁真，鉴定为纯纯的trash  
-Training framework --> tensorflow  
+Training framework --> tensorflow / Pytorch
 Vitural python enviroment --> conda python=3.10 / 3.11 / 3.12 
-Training require -->   tensorflow-cpu(tensorflow) opencv-python numpy  
-Inference require -->  tensorflow opencv-python numpy  
+Training require -->   tensorflow opencv-python numpy(TensorflowVision)/torch opencv-python numpy torchvision (TorchVision)
+Inference require -->  tensorflow opencv-python numpy(TensorflowVision)/torch opencv-python numpy (TorchVision)
 
 ## 
 - What you are taking for a gift is a problem you have to solve.
