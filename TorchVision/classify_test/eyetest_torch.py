@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 import json
-
+THREADS=8
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
@@ -135,7 +135,7 @@ def main():
     detector = GarbageDetectorPyTorch(
         model_path='garbage_classifier.pt',
         labels_path='garbage_classify_rule.json',
-        num_threads=8
+        num_threads=THREADS
     )
     
     cap = find_camera()
