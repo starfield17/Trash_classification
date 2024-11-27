@@ -13,8 +13,14 @@ print(f"使用设备: {device}")
 
 # 数据预处理参数
 IMG_SIZE = 224
-BATCH_SIZE = 32
+BATCH_SIZE = 128
 NUM_CLASSES = 40
+
+# 新增训练目标参数
+TARGET_TRAIN_ACC = 99.0  # 目标训练准确率
+TARGET_VAL_ACC = 95.0    # 目标验证准确率
+MAX_EPOCHS = 200        # 最大训练轮数
+EARLY_STOPPING_PATIENCE = 10  # 早停轮数
 
 class GarbageDataset(Dataset):
     def __init__(self, root_dir, txt_file, is_training=True):
@@ -37,41 +43,32 @@ class GarbageDataset(Dataset):
         img = cv2.imread(os.path.join(self.root_dir, img_path))
         if img is None:
             print(f"警告：无法读取图片 {img_path}")
-            # 创建空白图片时直接使用float32类型
             img = np.zeros((IMG_SIZE, IMG_SIZE, 3), dtype=np.float32)
         else:
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
             img = img.astype(np.float32) / 255.0
 
-        # 将 NumPy 数组转换为 PyTorch 张量
         img = torch.from_numpy(img).permute(2, 0, 1)
 
         if self.is_training:
-            # 检查 NaN 值
             if torch.isnan(img).any():
                 print(f"警告：图片 {img_path} 包含 NaN 值")
                 return torch.zeros(3, IMG_SIZE, IMG_SIZE)
 
-            # 数据增强操作
             try:
-                # 随机水平翻转
                 if torch.rand(1) > 0.5:
                     img = torch.flip(img, [2])
                 
-                # 随机垂直翻转
                 if torch.rand(1) > 0.5:
                     img = torch.flip(img, [1])
                 
-                # 随机旋转
                 k = torch.randint(0, 4, (1,)).item()
                 img = torch.rot90(img, k, [1, 2])
                 
-                # 随机亮度调整
                 brightness_factor = 1.0 + torch.rand(1).item() * 0.4 - 0.2
                 img = img * brightness_factor
                 
-                # 确保值在合理范围内
                 img = torch.clamp(img, 0.0, 1.0)
                 
             except Exception as e:
@@ -109,20 +106,26 @@ class GarbageClassifier(nn.Module):
     def forward(self, x):
         return self.model(x)
 
-def train_model(model, train_loader, val_loader, num_epochs=20):
+def train_model(model, train_loader, val_loader):
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=2)
+    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)  # 使用AdamW并添加权重衰减
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.2, patience=3, verbose=True)
     
     best_val_acc = 0.0
-    for epoch in range(num_epochs):
+    epochs_without_improvement = 0
+    epoch = 0
+    
+    while epoch < MAX_EPOCHS:
+        epoch += 1
+        print(f'\n开始训练 Epoch {epoch}/{MAX_EPOCHS}')
+        
         # 训练阶段
         model.train()
         train_loss = 0.0
         train_correct = 0
         train_total = 0
         
-        for inputs, labels in train_loader:
+        for batch_idx, (inputs, labels) in enumerate(train_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             
             optimizer.zero_grad()
@@ -135,6 +138,9 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
             _, predicted = outputs.max(1)
             train_total += labels.size(0)
             train_correct += predicted.eq(labels).sum().item()
+            
+            if batch_idx % 50 == 0:
+                print(f'Batch [{batch_idx}/{len(train_loader)}] Loss: {loss.item():.4f}')
         
         # 验证阶段
         model.eval()
@@ -156,16 +162,41 @@ def train_model(model, train_loader, val_loader, num_epochs=20):
         train_acc = 100. * train_correct / train_total
         val_acc = 100. * val_correct / val_total
         
-        print(f'Epoch [{epoch+1}/{num_epochs}]')
-        print(f'Train Loss: {train_loss/len(train_loader):.4f}, Acc: {train_acc:.2f}%')
-        print(f'Val Loss: {val_loss/len(val_loader):.4f}, Acc: {val_acc:.2f}%')
+        print(f'Epoch [{epoch}/{MAX_EPOCHS}]')
+        print(f'Train Loss: {train_loss/len(train_loader):.4f}, Train Acc: {train_acc:.2f}%')
+        print(f'Val Loss: {val_loss/len(val_loader):.4f}, Val Acc: {val_acc:.2f}%')
         
         scheduler.step(val_loss)
         
         # 保存最佳模型
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), 'best_model.pth')
+            print(f'保存新的最佳模型，验证准确率: {val_acc:.2f}%')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_acc': val_acc,
+                'train_acc': train_acc
+            }, 'best_model.pth')
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            
+        # 检查是否达到目标
+        if train_acc >= TARGET_TRAIN_ACC and val_acc >= TARGET_VAL_ACC:
+            print(f'\n达到目标准确率！训练准确率: {train_acc:.2f}%, 验证准确率: {val_acc:.2f}%')
+            break
+            
+        # 早停检查
+        if epochs_without_improvement >= EARLY_STOPPING_PATIENCE:
+            print(f'\n{EARLY_STOPPING_PATIENCE} 轮未改善，停止训练')
+            break
+            
+        # 如果训练准确率很高但验证准确率较低，说明过拟合，提前停止
+        if train_acc > 98 and val_acc < 80:
+            print('\n检测到可能的过拟合，停止训练')
+            break
 
 def main():
     # 创建数据集和数据加载器
