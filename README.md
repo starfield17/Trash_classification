@@ -1,4 +1,4 @@
-# Trash_classification0
+# Trash_classification
 一眼丁真，鉴定为纯纯的trash  
 Training framework --> tensorflow / Pytorch
 Vitural python enviroment --> conda python=3.10 / 3.11 / 3.12 
