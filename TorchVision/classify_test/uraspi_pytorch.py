@@ -7,7 +7,7 @@ import serial
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
-
+THREADS=4
 # 串口配置
 SERIAL_PORT = '/dev/ttyS0'
 SERIAL_BAUD = 9600
@@ -153,7 +153,7 @@ def main():
     detector = GarbageDetectorPyTorch(
         model_path='garbage_classifier.pt',
         labels_path='garbage_classify_rule.json',
-        num_threads=4
+        num_threads=THREADS
     )
     
     cap = find_camera()
