@@ -1,0 +1,1 @@
+sudo watch -n 0.2 'echo "===== NPU Monitor ====="; echo "Time: $(date "+%Y-%m-%d %H:%M:%S")"; cat /sys/kernel/debug/rknpu/load 2>/dev/null || echo "无法访问 NPU 负载信息"; cat /sys/kernel/debug/clk/clk_summary | grep npu 2>/dev/null || echo "无法访问 NPU 频率信息"'
