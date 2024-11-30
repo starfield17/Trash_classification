@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import torch
 import json
-THREADS=8
+
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
@@ -11,8 +11,9 @@ def setup_gpu():
     return True, f"已启用GPU: {device_name}"
 
 class GarbageDetectorPyTorch:
-    def __init__(self, model_path, labels_path, num_threads):
+    def __init__(self, model_path, labels_path, num_threads, enable_display=True):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.enable_display = enable_display
         torch.set_num_threads(num_threads)
         # 加载标签映射
         with open(labels_path, 'r', encoding='utf-8') as f:
@@ -75,7 +76,7 @@ class GarbageDetectorPyTorch:
         category = self.get_category(label)
         
         # 可视化处理
-        if confidence > 0.5:
+        if confidence > 0.9 and self.enable_display:
             color = self.categories.get(category, (0, 255, 0))
             
             # 绘制中心检测区域
@@ -108,6 +109,7 @@ class GarbageDetectorPyTorch:
                           (x1 + padding, y_offset + h),
                           font, font_scale, color, thickness)
             
+        if confidence > 0.9:
             print("\n检测结果:")
             print(f"类别: {category}")
             print(f"物品: {label.split('/')[-1]}")
@@ -115,6 +117,7 @@ class GarbageDetectorPyTorch:
             print("-" * 30)
         
         return frame
+
 def find_camera():
     for index in range(101):  # 搜索 0-100 号摄像头
         cap = cv2.VideoCapture(index)
@@ -126,28 +129,33 @@ def find_camera():
     print("错误: 未找到任何可用的摄像头")
     return None
 
-def main():
+def main(enable_display=True):
     use_gpu, device_info = setup_gpu()
     print("\n设备信息:")
     print(device_info)
     print("-" * 30)
 
     detector = GarbageDetectorPyTorch(
-        model_path='garbage_classifier.pt',
+        model_path='garbage_classifier_ResNet18.pt',
         labels_path='garbage_classify_rule.json',
-        num_threads=THREADS
+        num_threads=8,
+        enable_display=enable_display
     )
     
     cap = find_camera()
     
-    window_name = '垃圾分类检测'
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 800, 600)
+    if enable_display:
+        window_name = '垃圾分类检测'
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, 800, 600)
     
     print("\n系统启动:")
     print("- 摄像头已就绪")
-    print("- 按 'q' 键退出程序")
-    print("- 将物品放置在画面中心区域")
+    if enable_display:
+        print("- 按 'q' 键退出程序")
+        print("- 将物品放置在画面中心区域")
+    else:
+        print("- 按 Ctrl+C 退出程序")
     print("-" * 30)
     
     try:
@@ -158,17 +166,20 @@ def main():
                 break
             
             frame = detector.detect(frame)
-            cv2.imshow(window_name, frame)
             
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("\n程序正常退出")
-                break
+            if enable_display:
+                cv2.imshow(window_name, frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print("\n程序正常退出")
+                    break
                 
     except KeyboardInterrupt:
         print("\n检测到键盘中断,程序退出")
     finally:
         cap.release()
-        cv2.destroyAllWindows()
+        if enable_display:
+            cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    main()
+    # 设置 enable_display=False 可以关闭窗口显示
+    main(enable_display=False)
