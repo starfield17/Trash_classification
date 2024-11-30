@@ -136,7 +136,7 @@ def main(enable_display=True):
     print("-" * 30)
 
     detector = GarbageDetectorPyTorch(
-        model_path='garbage_classifier_ResNet18.pt',
+        model_path='garbage_classifier.pt',
         labels_path='garbage_classify_rule.json',
         num_threads=8,
         enable_display=enable_display
