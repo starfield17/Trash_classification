@@ -26,17 +26,16 @@ check_package_managers() {
 declare -A PIP_SOURCES=(
     ["1"]="中国科学技术大学 (USTC) https://mirrors.ustc.edu.cn/pypi/web/simple"
     ["2"]="清华大学 (Tsinghua) https://pypi.tuna.tsinghua.edu.cn/simple"
-    ["3"]="豆瓣 (Douban) https://pypi.douban.com/simple"
-    ["4"]="阿里云 (Alibaba) https://mirrors.aliyun.com/pypi/simple/"
-    ["5"]="官方源 https://pypi.org/simple"
+    ["3"]="腾讯云 (Tencent) http://mirrors.cloud.tencent.com/pypi/simple"
+    ["4"]="豆瓣 (Douban) http://pypi.douban.com/simple"
+    ["5"]="阿里云 (Alibaba) https://mirrors.aliyun.com/pypi/simple/"
+    ["6"]="默认源 (恢复默认设置) default"
 )
 
 declare -A CONDA_SOURCES=(
     ["1"]="清华大学 (Tsinghua) https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/"
     ["2"]="中国科学技术大学 (USTC) https://mirrors.ustc.edu.cn/anaconda/pkgs/main/"
-    ["3"]="阿里云 (Alibaba) https://mirrors.aliyun.com/anaconda/pkgs/main/"
-    ["4"]="中科大 (USTC) https://mirrors.ustc.edu.cn/anaconda/pkgs/main/"
-    ["5"]="官方源 https://repo.anaconda.com/pkgs/main/"
+    ["3"]="官方源 https://repo.anaconda.com/pkgs/main/"
 )
 
 # 备份 conda 配置文件
@@ -100,13 +99,20 @@ set_pip_source() {
             url="https://pypi.tuna.tsinghua.edu.cn/simple"
             ;;
         3)
-            url="https://pypi.douban.com/simple"
+            url="http://mirrors.cloud.tencent.com/pypi/simple"
             ;;
         4)
-            url="https://mirrors.aliyun.com/pypi/simple/"
+            url="http://pypi.douban.com/simple"
             ;;
         5)
-            url="https://pypi.org/simple"
+            url="https://mirrors.aliyun.com/pypi/simple/"
+            ;;
+        6)
+            pip config unset global.index-url
+            echo "----------------------------------------"
+            echo "已恢复默认源设置"
+            echo "----------------------------------------"
+            return 0
             ;;
         9)
             return 1
@@ -149,14 +155,6 @@ set_conda_source() {
             name="中国科学技术大学 (USTC)"
             ;;
         3)
-            url="https://mirrors.aliyun.com/anaconda/pkgs/main/"
-            name="阿里云 (Alibaba)"
-            ;;
-        4)
-            url="https://mirrors.ustc.edu.cn/anaconda/pkgs/main/"
-            name="中科大 (USTC)"
-            ;;
-        5)
             url="https://repo.anaconda.com/pkgs/main/"
             name="官方源"
             ;;
