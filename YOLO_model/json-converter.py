@@ -75,11 +75,27 @@ def process_folder(input_folder, output_folder):
     print(f"\nProcessing complete. Converted {len(json_files)} files.")
 
 def main():
-    # Define input and output folders
-    input_folder = "labels"  # 原始多边形标注文件夹
-    output_folder = "trans_labels"    # 转换后的矩形标注文件夹
+    # Default folders
+    default_input = "labels"
+    default_output = "trans_labels"
+    
+    # Get input folder from user
+    input_folder = input(f"Enter input folder path (press Enter for default '{default_input}'): ").strip()
+    if not input_folder:
+        input_folder = default_input
+    
+    # Get output folder from user
+    output_folder = input(f"Enter output folder path (press Enter for default '{default_output}'): ").strip()
+    if not output_folder:
+        output_folder = default_output
+    
+    # Validate input folder exists
+    if not os.path.exists(input_folder):
+        print(f"Error: Input folder '{input_folder}' does not exist!")
+        return
     
     # Process files
+    print(f"\nProcessing files from '{input_folder}' to '{output_folder}'...")
     process_folder(input_folder, output_folder)
 
 if __name__ == "__main__":
