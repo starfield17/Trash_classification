@@ -134,16 +134,16 @@ class YOLODetector:
         
         # 类别名称和颜色映射
         self.class_names = {
-            0: 'battery',
-            1: 'expired_drug',
-            2: 'inner_packing',
-            3: 'can',
-            4: 'bottle',
-            5: 'potato',
-            6: 'daikon',
-            7: 'carrot',
+            0: 'potato',
+            1: 'daikon',
+            2: 'carrot',
+            3: 'bottle',
+            4: 'can',
+            5: 'battery',
+            6: 'drug',
+            7: 'inner_packing',
             8: 'tile',
-            9: 'pebble',
+            9: 'stone',
             10: 'brick'
         }
         
