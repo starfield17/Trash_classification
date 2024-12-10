@@ -8,7 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-
+datapath='./2286036_1733842536'  # 根据实际情况修改
 def check_and_clean_dataset(data_dir):
     """检查数据集完整性并清理无效数据"""
     print("Checking dataset integrity...")
@@ -389,7 +389,7 @@ def train_yolo():
 def main():
     try:
         # 设置数据目录
-        data_dir = './2286036_1733842536'  # 当前目录，根据实际情况修改
+        data_dir = datapath
         
         # 1. 检查数据集
         print("Step 1: Checking dataset...")
