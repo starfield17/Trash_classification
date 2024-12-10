@@ -159,10 +159,6 @@ The pipeline includes comprehensive error handling for:
 
 Feel free to submit issues and enhancement requests!
 
-## License
-
-[Your License Here]
-
 ## Author
 
 [Your Name]
