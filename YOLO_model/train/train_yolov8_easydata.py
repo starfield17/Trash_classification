@@ -8,7 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-datapath='./2286036_1733842536'  # 根据实际情况修改
+datapath='./label'  # 根据实际情况修改
 def check_and_clean_dataset(data_dir):
     """检查数据集完整性并清理无效数据"""
     print("Checking dataset integrity...")
@@ -331,46 +331,46 @@ def augment_validation_set(num_augmentations=2):
     
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
-
 def train_yolo():
     """改进的YOLO训练配置"""
     model = YOLO('yolov8n.pt')
     
     results = model.train(
         data='data.yaml',
-        epochs=100,
+        epochs=200,  # 增加到200轮
         imgsz=640,
-        batch=16,            # 减小batch size以提高稳定性
+        batch=16,
         workers=8,
         device='0',
-        patience=50,         # 增加patience以避免过早停止
-        save_period=5,       # 更频繁地保存模型
+        patience=50,
+        save_period=5,
         exist_ok=True,
         project=os.path.dirname(os.path.abspath(__file__)),
         name='runs/train',
         
         # 优化器参数调整
         optimizer='AdamW',
-        lr0=0.0005,          # 降低初始学习率
-        lrf=0.01,            # 降低最终学习率因子
-        momentum=0.937,      # 略微提高动量
-        weight_decay=0.0005, # 调整权重衰减
-        warmup_epochs=10,    # 延长预热周期
+        lr0=0.0005,
+        lrf=0.01,
+        # scheduler='cosine',  # 移除无效参数
+        momentum=0.937,
+        weight_decay=0.0005,
+        warmup_epochs=10,
         warmup_momentum=0.5,
         warmup_bias_lr=0.05,
         
         # 损失函数权重调整
-        box=4.0,            # 降低box loss权重
-        cls=1.0,            # 提高cls loss权重
-        dfl=1.5,            # 保持dfl loss权重
+        box=4.0,
+        cls=1.0,
+        dfl=1.5,
         
         # 基础数据增强参数
-        augment=True,       
-        degrees=5.0,        # 减小旋转角度
-        scale=0.2,          # 减小缩放范围
-        fliplr=0.5,         # 保持水平翻转
-        flipud=0.0,         # 禁用垂直翻转
-        hsv_h=0.01,         # 减小HSV调整
+        augment=True,
+        degrees=5.0,
+        scale=0.2,
+        fliplr=0.5,
+        flipud=0.0,
+        hsv_h=0.01,
         hsv_s=0.2,
         hsv_v=0.1,
         
@@ -380,12 +380,17 @@ def train_yolo():
         copy_paste=0,
         
         # 添加早停和模型评估配置
-        close_mosaic=0,     # 确保mosaic增强始终关闭
-        nbs=64,             # 标称batch size
-        overlap_mask=False,  # 禁用mask重叠
-        multi_scale=False,   # 禁用多尺度训练
-        single_cls=False,    # 保持多类别
+        close_mosaic=0,
+        nbs=64,
+        overlap_mask=False,
+        multi_scale=False,
+        single_cls=False,
+        
+        # 启用混合精度
+        # precision=16,  # 移除无效参数
     )
+
+
 def main():
     try:
         # 设置数据目录
