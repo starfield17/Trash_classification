@@ -24,8 +24,8 @@ VIDEO_NAME="${VIDEO_FILENAME%.*}"
 OUTPUT_DIR="$VIDEO_DIR/${VIDEO_NAME}_frames"
 mkdir -p "$OUTPUT_DIR"
 
-# 使用ffmpeg每0.5秒抽取一帧
+# 使用ffmpeg每1秒抽取一帧
 # 输出格式为 视频名_X.png，其中X从1开始递增
-ffmpeg -i "$VIDEO_PATH" -vf fps=2 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png"
+ffmpeg -i "$VIDEO_PATH" -vf fps=1 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png"
 
 echo "帧已保存到目录: $OUTPUT_DIR"
