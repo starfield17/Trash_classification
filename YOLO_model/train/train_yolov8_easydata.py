@@ -333,7 +333,7 @@ def augment_validation_set(num_augmentations=2):
     print(f"Augmented validation set contains {total_images} images")
 def train_yolo():
     """改进的YOLO训练配置"""
-    model = YOLO('yolov8n.pt')
+    model = YOLO('yolo11n.pt')
     
     results = model.train(
         data='data.yaml',
