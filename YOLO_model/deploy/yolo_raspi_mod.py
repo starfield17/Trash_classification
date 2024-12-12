@@ -5,7 +5,9 @@ from ultralytics import YOLO
 import numpy as np
 import threading
 import time
-
+import pigpio
+import subprocess
+import sys
 # 全局控制变量
 DEBUG_WINDOW = True
 ENABLE_SERIAL = True
@@ -13,14 +15,71 @@ CONF_THRESHOLD = 0.5  # 置信度阈值
 
 # 串口配置
 STM32_PORT = '/dev/ttyS0'  # STM32串口
-SCREEN_PORT = '/dev/ttyUSB0'  # 串口屏串口
 STM32_BAUD = 9600
-SCREEN_BAUD = 115200
+SCREEN_TX = 23  # GPIO23 作为TX
+SCREEN_RX = 24  # GPIO24 作为RX
+SCREEN_BAUD = 9600
+
 
 # 串口通信协议
-FRAME_HEADER = b'\xff\xff'  # 帧头
-FRAME_FOOTER = b'\xff\xff'  # 帧尾
+FRAME_HEADER = b'\xff\xff'  # 帧头(STM32)
+FRAME_FOOTER = b'\xff\xff'  # 帧尾(STM32)
 SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
+def check_pigpiod():
+    """检查pigpiod守护进程是否运行"""
+    try:
+        # 尝试运行pigpiod
+        subprocess.run(['sudo', 'pigpiod'], capture_output=True)
+    except Exception as e:
+        print(f"警告: 启动pigpiod失败: {str(e)}")
+        print("请手动运行: sudo pigpiod")
+        sys.exit(1)
+        
+class SoftwareSerial:
+    def __init__(self, tx_pin, rx_pin, baud_rate):
+        self.pi = pigpio.pi()
+        if not self.pi.connected:
+            raise Exception("无法连接到pigpio守护进程")
+        
+        self.tx_pin = tx_pin
+        self.rx_pin = rx_pin
+        self.baud_rate = baud_rate
+        self.is_open = False
+        
+        # 配置GPIO
+        self.pi.set_mode(tx_pin, pigpio.OUTPUT)
+        self.pi.set_mode(rx_pin, pigpio.INPUT)
+        
+        # 创建软串口
+        self.serial = self.pi.serial_open(rx_pin, baud_rate, 8)
+        self.is_open = True
+        
+        # 用于数据接收的缓冲区
+        self._read_buffer = bytearray()
+    
+    def write(self, data):
+        if self.is_open:
+            try:
+                self.pi.wave_clear()
+                self.pi.wave_add_serial(self.tx_pin, self.baud_rate, data)
+                wave_id = self.pi.wave_create()
+                if wave_id >= 0:
+                    self.pi.wave_send_once(wave_id)
+                    while self.pi.wave_tx_busy():  # 等待发送完成
+                        time.sleep(0.001)
+                    self.pi.wave_delete(wave_id)
+            except Exception as e:
+                print(f"软串口发送数据失败: {str(e)}")
+    
+    def close(self):
+        if self.is_open:
+            try:
+                self.pi.serial_close(self.serial)
+                self.pi.stop()
+                self.is_open = False
+            except Exception as e:
+                print(f"关闭软串口失败: {str(e)}")
+
 
 def setup_gpu():
     if not torch.cuda.is_available():
@@ -44,14 +103,10 @@ class SerialManager:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
         
-        # 初始化串口屏
+        # 初始化软串口屏
         try:
-            self.screen_port = serial.Serial(
-                port=SCREEN_PORT,
-                baudrate=SCREEN_BAUD,
-                timeout=5
-            )
-            print(f"串口屏已初始化: {SCREEN_PORT}")
+            self.screen_port = SoftwareSerial(SCREEN_TX, SCREEN_RX, SCREEN_BAUD)
+            print(f"串口屏已初始化: GPIO{SCREEN_TX}(TX), GPIO{SCREEN_RX}(RX)")
         except Exception as e:
             print(f"串口屏初始化失败: {str(e)}")
             self.screen_port = None
@@ -69,61 +124,13 @@ class SerialManager:
                 # 发送文本命令
                 command = f't0.txt=\"{text}\"'.encode(encoding)
                 self.screen_port.write(command)
+                time.sleep(0.01)  # 短暂延时确保命令发送完成
                 # 发送结束符
                 self.screen_port.write(SCREEN_END)
                 print(f"串口屏输出: {text}")
             except Exception as e:
                 print(f"串口屏输出失败: {str(e)}")
-    
-    def send_to_stm32(self, class_id):
-        """发送检测结果到STM32"""
-        if self.stm32_port and self.stm32_port.is_open:
-            try:
-                # 构建数据包：帧头 + 数据 + 帧尾
-                data = FRAME_HEADER + str(class_id).encode() + FRAME_FOOTER
-                self.stm32_port.write(data)
-                print(f"STM32串口输出: {class_id}")
-            except Exception as e:
-                print(f"STM32串口输出失败: {str(e)}")
-    
-    def receive_stm32_data(self):
-        """接收STM32数据的线程函数"""
-        buffer = bytearray()
-        
-        while self.is_running:
-            if self.stm32_port and self.stm32_port.is_open:
-                try:
-                    # 读取串口数据
-                    if self.stm32_port.in_waiting:
-                        data = self.stm32_port.read(1)
-                        buffer.extend(data)
-                        
-                        # 检查是否接收到完整数据包
-                        if len(buffer) >= 4:  # 最小包长度：帧头(2) + 数据(1) + 帧尾(2)
-                            # 查找帧头
-                            start_idx = buffer.find(FRAME_HEADER)
-                            if start_idx != -1:
-                                # 查找帧尾
-                                end_idx = buffer.find(FRAME_FOOTER, start_idx + len(FRAME_HEADER))
-                                if end_idx != -1:
-                                    # 提取数据
-                                    data = buffer[start_idx + len(FRAME_HEADER):end_idx]
-                                    print(f"收到STM32数据: {data.decode()}")
-                                    
-                                    # 清除已处理的数据
-                                    buffer = buffer[end_idx + len(FRAME_FOOTER):]
-                                    
-                except Exception as e:
-                    print(f"接收STM32数据失败: {str(e)}")
-            time.sleep(0.01)  # 避免CPU占用过高
-    
-    def __del__(self):
-        """析构函数，确保串口被正确关闭"""
-        self.is_running = False
-        if self.stm32_port and self.stm32_port.is_open:
-            self.stm32_port.close()
-        if self.screen_port and self.screen_port.is_open:
-            self.screen_port.close()
+
 
 class YOLODetector:
     def __init__(self, model_path):
@@ -212,7 +219,7 @@ def main():
     print("\n设备信息:")
     print(device_info)
     print("-" * 30)
-
+    check_pigpiod()
     detector = YOLODetector(
         model_path='best.pt'
     )
@@ -251,6 +258,9 @@ def main():
     except KeyboardInterrupt:
         print("\n检测到键盘中断,程序退出")
     finally:
+        # 清理资源
+        if hasattr(detector, 'serial_manager'):
+            detector.serial_manager.cleanup()
         cap.release()
         if DEBUG_WINDOW:
             cv2.destroyAllWindows()
