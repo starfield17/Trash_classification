@@ -1,13 +1,13 @@
-# YOLOv8 Training Pipeline for Object Detection
+# YOLOV11 Training Pipeline for Object Detection
 
-A comprehensive training pipeline for YOLOv8 object detection model, featuring dataset preparation, validation, augmentation, and optimized training configurations.
+A comprehensive training pipeline for YOLOV11 object detection model, featuring dataset preparation, validation, augmentation, and optimized training configurations.
 
 ## Features
 
 - Automated dataset integrity checking
 - Smart train/validation/test split
 - Custom data augmentation pipeline
-- Optimized YOLOv8 training configurations
+- Optimized YOLOV11 training configurations
 - Support for 11 object classes
 - Comprehensive error handling
 
@@ -73,7 +73,7 @@ datapath = './your_dataset_path'  # Modify this according to your setup
 ```
 3. Run the training script:
 ```bash
-python train_yolov8_easydata.py
+python train_yoloV11_easydata.py
 ```
 
 ## Pipeline Stages
@@ -158,7 +158,3 @@ The pipeline includes comprehensive error handling for:
 ## Contributing
 
 Feel free to submit issues and enhancement requests!
-
-## Author
-
-[Your Name]
