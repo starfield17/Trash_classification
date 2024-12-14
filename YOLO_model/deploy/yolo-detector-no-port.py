@@ -5,7 +5,7 @@ import numpy as np
 import sys
 
 # 全局控制变量
-DEBUG_WINDOW = False
+DEBUG_WINDOW = False  # 默认关闭窗口显示
 CONF_THRESHOLD = 0.9  # 置信度阈值
 
 def setup_gpu():
@@ -130,15 +130,16 @@ class YOLODetector:
                 
                 color = self.colors.get(class_id, (255, 255, 255))
                 
-                # 在PC上始终显示检测框和信息
-                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.circle(frame, (center_x, center_y), 5, (0, 255, 0), -1)
-                
-                label = f"{display_text} {confidence:.2f}"
-                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-                cv2.rectangle(frame, (x1, y1-th-10), (x1+tw+10, y1), color, -1)
-                cv2.putText(frame, label, (x1+5, y1-5),
-                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+                if DEBUG_WINDOW:
+                    # 显示检测框和信息
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    cv2.circle(frame, (center_x, center_y), 5, (0, 255, 0), -1)
+                    
+                    label = f"{display_text} {confidence:.2f}"
+                    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                    cv2.rectangle(frame, (x1, y1-th-10), (x1+tw+10, y1), color, -1)
+                    cv2.putText(frame, label, (x1+5, y1-5),
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
                 
                 print(f"检测到物体:")
                 print(f"置信度: {confidence:.2%}")
@@ -175,8 +176,9 @@ def main():
         return
     
     window_name = 'YOLOv8垃圾分类检测'
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 800, 600)
+    if DEBUG_WINDOW:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, 800, 600)
     
     print("\n系统启动:")
     print("- 摄像头已就绪")
@@ -191,11 +193,12 @@ def main():
                 break
             
             frame = detector.detect(frame)
-            cv2.imshow(window_name, frame)
             
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                print("\n程序正常退出")
-                break
+            if DEBUG_WINDOW:
+                cv2.imshow(window_name, frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print("\n程序正常退出")
+                    break
             
     except KeyboardInterrupt:
         print("\n检测到键盘中断,程序退出")
