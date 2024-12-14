@@ -316,7 +316,7 @@ def main():
         return
     
     if DEBUG_WINDOW:
-        window_name = 'YOLOv8检测'
+        window_name = 'YOLOv8&v11检测'
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 800, 600)
     
