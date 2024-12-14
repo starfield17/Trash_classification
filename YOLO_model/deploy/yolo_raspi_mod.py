@@ -5,9 +5,9 @@ from ultralytics import YOLO
 import numpy as np
 import threading
 import time
-import pigpio
 import subprocess
 import sys
+
 # 全局控制变量
 DEBUG_WINDOW = True
 ENABLE_SERIAL = True
@@ -16,70 +16,13 @@ CONF_THRESHOLD = 0.5  # 置信度阈值
 # 串口配置
 STM32_PORT = '/dev/ttyS0'  # STM32串口
 STM32_BAUD = 9600
-SCREEN_TX = 23  # GPIO23 作为TX
-SCREEN_RX = 24  # GPIO24 作为RX
+SCREEN_PORT = '/dev/ttyS1'  # 串口屏串口
 SCREEN_BAUD = 9600
-
 
 # 串口通信协议
 FRAME_HEADER = b'\xff\xff'  # 帧头(STM32)
 FRAME_FOOTER = b'\xff\xff'  # 帧尾(STM32)
 SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
-def check_pigpiod():
-    """检查pigpiod守护进程是否运行"""
-    try:
-        # 尝试运行pigpiod
-        subprocess.run(['sudo', 'pigpiod'], capture_output=True)
-    except Exception as e:
-        print(f"警告: 启动pigpiod失败: {str(e)}")
-        print("请手动运行: sudo pigpiod")
-        sys.exit(1)
-        
-class SoftwareSerial:
-    def __init__(self, tx_pin, rx_pin, baud_rate):
-        self.pi = pigpio.pi()
-        if not self.pi.connected:
-            raise Exception("无法连接到pigpio守护进程")
-        
-        self.tx_pin = tx_pin
-        self.rx_pin = rx_pin
-        self.baud_rate = baud_rate
-        self.is_open = False
-        
-        # 配置GPIO
-        self.pi.set_mode(tx_pin, pigpio.OUTPUT)
-        self.pi.set_mode(rx_pin, pigpio.INPUT)
-        
-        # 创建软串口
-        self.serial = self.pi.serial_open(rx_pin, baud_rate, 8)
-        self.is_open = True
-        
-        # 用于数据接收的缓冲区
-        self._read_buffer = bytearray()
-    
-    def write(self, data):
-        if self.is_open:
-            try:
-                self.pi.wave_clear()
-                self.pi.wave_add_serial(self.tx_pin, self.baud_rate, data)
-                wave_id = self.pi.wave_create()
-                if wave_id >= 0:
-                    self.pi.wave_send_once(wave_id)
-                    while self.pi.wave_tx_busy():  # 等待发送完成
-                        time.sleep(0.001)
-                    self.pi.wave_delete(wave_id)
-            except Exception as e:
-                print(f"软串口发送数据失败: {str(e)}")
-    
-    def close(self):
-        if self.is_open:
-            try:
-                self.pi.serial_close(self.serial)
-                self.pi.stop()
-                self.is_open = False
-            except Exception as e:
-                print(f"关闭软串口失败: {str(e)}")
-
 
 def setup_gpu():
     if not torch.cuda.is_available():
@@ -103,10 +46,10 @@ class SerialManager:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
         
-        # 初始化软串口屏
+        # 初始化串口屏（使用硬件串口）
         try:
-            self.screen_port = SoftwareSerial(SCREEN_TX, SCREEN_RX, SCREEN_BAUD)
-            print(f"串口屏已初始化: GPIO{SCREEN_TX}(TX), GPIO{SCREEN_RX}(RX)")
+            self.screen_port = serial.Serial(SCREEN_PORT, SCREEN_BAUD, timeout=0.1)
+            print(f"串口屏已初始化: {SCREEN_PORT}")
         except Exception as e:
             print(f"串口屏初始化失败: {str(e)}")
             self.screen_port = None
@@ -150,8 +93,6 @@ class SerialManager:
             self.stm32_port.close()
         if self.screen_port and self.screen_port.is_open:
             self.screen_port.close()
-
-
 
 class YOLODetector:
     def __init__(self, model_path):
@@ -240,7 +181,7 @@ def main():
     print("\n设备信息:")
     print(device_info)
     print("-" * 30)
-    check_pigpiod()
+    
     detector = YOLODetector(
         model_path='best.pt'
     )
