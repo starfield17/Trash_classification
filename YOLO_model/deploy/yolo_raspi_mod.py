@@ -9,14 +9,14 @@ import subprocess
 import sys
 
 # 全局控制变量
-DEBUG_WINDOW = True
+DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.5  # 置信度阈值
 
 # 串口配置
-STM32_PORT = '/dev/ttyS0'  # STM32串口
+STM32_PORT = '/dev/ttyS0'  # STM32串口(TX-> GPIO14,RX->GPIO15)
 STM32_BAUD = 9600
-SCREEN_PORT = '/dev/ttyS1'  # 串口屏串口
+SCREEN_PORT = '/dev/ttyAMA2'  # 串口屏串口(TX-GPIO0> ,RX->GPIO1)
 SCREEN_BAUD = 9600
 
 # 串口通信协议
