@@ -111,25 +111,46 @@ class SerialManager:
             print(f"串口屏初始化失败: {str(e)}")
             self.screen_port = None
         
-        # 启动STM32数据接收线程
+        # 若STM32串口初始化成功，则启动数据接收线程
         if self.stm32_port:
             self.receive_thread = threading.Thread(target=self.receive_stm32_data)
             self.receive_thread.daemon = True
             self.receive_thread.start()
     
+    def receive_stm32_data(self):
+        while self.is_running and self.stm32_port and self.stm32_port.is_open:
+            data = self.stm32_port.read_all()
+            if data:
+                print(f"从STM32收到数据: {data}")
+            time.sleep(0.1)
+    
     def send_to_screen(self, text, encoding="GB2312"):
         """发送数据到串口屏"""
         if self.screen_port and self.screen_port.is_open:
             try:
-                # 发送文本命令
                 command = f't0.txt=\"{text}\"'.encode(encoding)
                 self.screen_port.write(command)
-                time.sleep(0.01)  # 短暂延时确保命令发送完成
-                # 发送结束符
+                time.sleep(0.01)
                 self.screen_port.write(SCREEN_END)
                 print(f"串口屏输出: {text}")
             except Exception as e:
                 print(f"串口屏输出失败: {str(e)}")
+    
+    def send_to_stm32(self, class_id):
+        """发送数据到STM32，可根据实际协议需求修改"""
+        if self.stm32_port and self.stm32_port.is_open:
+            # 假设简单发送class_id字符串，如需帧头帧尾请自行添加
+            data = str(class_id).encode('utf-8')
+            self.stm32_port.write(data)
+            self.stm32_port.flush()
+    
+    def cleanup(self):
+        self.is_running = False
+        if self.stm32_port and self.stm32_port.is_open:
+            self.stm32_port.close()
+        if self.screen_port and self.screen_port.is_open:
+            self.screen_port.close()
+
 
 
 class YOLODetector:
