@@ -1,133 +1,209 @@
-# 项目文档
+# 垃圾分类检测系统
 
-## 中文说明
+## 项目简介
 
-### 项目简介
-本项目基于YOLO（You Only Look Once）目标检测算法，结合OpenCV和PyTorch，实现了垃圾分类的自动识别与分类。系统通过摄像头获取实时图像，检测图中的垃圾类别，并将分类结果通过串口发送至STM32微控制器，同时在串口屏上显示分类信息。
+本项目实现了一个基于YOLO深度学习模型的垃圾分类检测系统。系统通过摄像头实时捕捉图像，使用YOLO模型进行物体检测和分类，并通过串口与STM32微控制器及串口显示屏进行通信，实时显示检测结果和分类信息。
 
-### 主要功能
-1. **目标检测与分类**：使用YOLO模型检测图像中的垃圾物体，并根据预设的类别映射将其分类为厨余垃圾、可回收垃圾、有害垃圾或其他垃圾。
-2. **串口通信**：将检测到的分类结果通过串口发送至STM32微控制器，并在串口屏上显示具体的分类信息。
-3. **调试窗口**：可选的调试窗口显示检测结果，包括边界框、类别名称和置信度等信息，便于开发和调试。
+## 功能特性
 
-### 依赖库
-- `cv2` (OpenCV)：用于图像处理和摄像头视频流捕捉。
-- `torch`：PyTorch库，用于加载和运行YOLO模型。
-- `serial`：用于串口通信。
-- `ultralytics`：YOLO模型的实现库。
-- `numpy`：数值计算库。
-- `threading`、`time`、`subprocess`、`sys`：标准Python库，用于多线程、时间管理等功能。
+- **实时视频捕捉**：使用OpenCV从摄像头获取实时视频流。
+- **物体检测与分类**：基于YOLO模型进行高精度的物体检测和垃圾分类。
+- **串口通信**：与STM32微控制器和串口显示屏进行双向通信，实现数据的发送与接收。
+- **多分类支持**：支持将垃圾分类为厨余垃圾、可回收垃圾、有害垃圾和其他垃圾。
+- **调试窗口**：可选的调试窗口，显示检测结果和实时视频流。
 
-### 代码结构
+## 环境依赖
 
-#### 全局变量
-- `DEBUG_WINDOW`：控制是否开启调试窗口。
-- `ENABLE_SERIAL`：控制是否启用串口通信。
-- `CONF_THRESHOLD`：检测的置信度阈值。
-- 串口配置参数，如`STM32_PORT`、`STM32_BAUD`、`SCREEN_PORT`、`SCREEN_BAUD`等。
-- 串口通信协议帧头和帧尾定义。
+### 硬件需求
 
-#### GPU设置
-`setup_gpu`函数用于检查是否有可用的GPU，并返回设备信息。如果未检测到GPU，将使用CPU进行推理。
+- **摄像头**：支持的摄像头设备，如USB摄像头。
+- **STM32微控制器**：用于与系统进行串口通信。
+- **串口显示屏**：用于显示分类结果。
 
-#### `SerialManager`类
-负责管理与STM32和串口屏的串口通信，包括初始化串口、发送数据和接收数据。
-- **初始化**：打开STM32和串口屏的串口连接，并启动接收STM32数据的线程。
-- **`receive_stm32_data`方法**：持续读取STM32发送的数据并打印。
-- **`send_to_screen`方法**：向串口屏发送分类信息，控制发送间隔并处理缓冲区。
-- **`send_to_stm32`方法**：向STM32发送分类ID，控制发送间隔并处理缓冲区。
-- **`cleanup`方法**：关闭串口连接，释放资源。
+### 软件需求
 
-#### `WasteClassifier`类
-负责将细分类别映射到大分类，并提供分类信息的打印功能。
-- **类别映射**：将具体物品类别映射到大分类（如厨余垃圾、可回收垃圾等）。
-- **`get_category_info`方法**：获取给定类别ID的详细分类信息。
-- **`print_classification`方法**：打印分类信息，并返回显示文本。
+- **操作系统**：Linux（如Raspberry Pi OS），也可在其他支持串口通信的系统上运行。
+- **Python 3.7+**
 
-#### `YOLODetector`类
-负责加载YOLO模型并进行目标检测。
-- **初始化**：加载YOLO模型，设置类别名称和颜色映射，初始化`SerialManager`。
-- **`detect`方法**：对输入帧进行检测，处理最高置信度的检测结果，绘制检测框（如果开启调试窗口），并通过串口发送分类结果。
+### Python库依赖
 
-#### 辅助函数
-- **`find_camera`函数**：查找可用的摄像头，返回摄像头对象。
-- **`main`函数**：程序的主入口，初始化设备、加载模型、启动摄像头，并循环读取帧进行检测和显示。
+- `opencv-python`
+- `torch`
+- `ultralytics`
+- `numpy`
+- `pyserial`
 
-### 使用说明
-1. **环境配置**：确保已安装所有依赖库，并将YOLO模型文件（`best.pt`）放置在指定路径。
-2. **连接设备**：连接摄像头、STM32微控制器和串口屏，并配置相应的串口参数。
-3. **运行程序**：执行脚本，系统将启动摄像头，进行实时垃圾分类检测。
-4. **查看结果**：分类结果将通过串口发送至STM32，并在串口屏上显示；如果开启调试窗口，还可在窗口中查看检测框和详细信息。
-5. **退出程序**：按下`q`键或通过键盘中断（Ctrl+C）退出程序，系统将自动释放资源。
+### 安装依赖
 
-### 注意事项
-- 确保摄像头正确连接并能被系统识别。
-- 串口设备路径和波特率配置应与实际硬件一致。
-- 若无GPU，系统将自动切换至CPU进行推理，可能影响检测速度。
+建议使用`pip`进行安装：
 
----
+```bash
+pip install opencv-python torch ultralytics numpy pyserial
+```
 
-## Project Documentation
+## 安装指南
 
-### Project Overview
-This project leverages the YOLO (You Only Look Once) object detection algorithm, combined with OpenCV and PyTorch, to achieve automatic waste classification. The system captures real-time images from a camera, detects and classifies waste items, sends classification results to an STM32 microcontroller via serial communication, and displays the information on a serial screen.
+1. **克隆项目仓库**
 
-### Main Features
-1. **Object Detection and Classification**: Utilizes the YOLO model to detect waste items in images and classifies them into categories such as kitchen waste, recyclable waste, hazardous waste, or other waste based on predefined mappings.
-2. **Serial Communication**: Sends detected classification results to an STM32 microcontroller and displays detailed classification information on a serial screen.
-3. **Debug Window**: An optional debug window displays detection results, including bounding boxes, class names, and confidence scores, facilitating development and troubleshooting.
+    ```bash
+    git clone https://github.com/your-repo/waste-classifier.git
+    cd waste-classifier
+    ```
 
-### Dependencies
-- `cv2` (OpenCV): For image processing and capturing video streams from the camera.
-- `torch`: PyTorch library for loading and running the YOLO model.
-- `serial`: For serial communication.
-- `ultralytics`: YOLO model implementation library.
-- `numpy`: Numerical computing library.
-- `threading`, `time`, `subprocess`, `sys`: Standard Python libraries for multi-threading, time management, and other functionalities.
+2. **安装Python依赖**
 
-### Code Structure
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-#### Global Variables
-- `DEBUG_WINDOW`: Controls whether the debug window is enabled.
-- `ENABLE_SERIAL`: Controls whether serial communication is enabled.
-- `CONF_THRESHOLD`: Confidence threshold for detections.
-- Serial configuration parameters such as `STM32_PORT`, `STM32_BAUD`, `SCREEN_PORT`, `SCREEN_BAUD`, etc.
-- Definitions for frame headers and footers for serial communication protocols.
+3. **准备YOLO模型**
 
-#### GPU Setup
-The `setup_gpu` function checks for the availability of a GPU and returns device information. If no GPU is detected, the system defaults to using the CPU for inference.
+    将训练好的YOLO模型文件（如`best.pt`）放置在项目根目录下，或根据需要修改代码中的模型路径。
 
-#### `SerialManager` Class
-Manages serial communication with the STM32 microcontroller and the serial screen, including initializing serial ports, sending data, and receiving data.
-- **Initialization**: Opens serial connections for STM32 and the serial screen and starts a thread to receive data from STM32.
-- **`receive_stm32_data` Method**: Continuously reads data from STM32 and prints it.
-- **`send_to_screen` Method**: Sends classification information to the serial screen, controlling send intervals and handling buffers.
-- **`send_to_stm32` Method**: Sends classification IDs to STM32, controlling send intervals and handling buffers.
-- **`cleanup` Method**: Closes serial connections and releases resources.
+4. **配置串口**
 
-#### `WasteClassifier` Class
-Handles mapping specific waste categories to broader classifications and provides functionality to print classification information.
-- **Category Mapping**: Maps specific item categories to broader categories such as kitchen waste, recyclable waste, hazardous waste, and other waste.
-- **`get_category_info` Method**: Retrieves detailed classification information for a given category ID.
-- **`print_classification` Method**: Prints classification information and returns display text.
+    根据实际硬件连接，修改代码中的串口配置参数：
 
-#### `YOLODetector` Class
-Responsible for loading the YOLO model and performing object detection.
-- **Initialization**: Loads the YOLO model, sets up class names and color mappings, and initializes `SerialManager`.
-- **`detect` Method**: Processes input frames, handles the highest confidence detection, draws bounding boxes (if debug window is enabled), and sends classification results via serial communication.
+    ```python
+    STM32_PORT = '/dev/ttyS0'  # STM32串口
+    STM32_BAUD = 115200
+    SCREEN_PORT = '/dev/ttyAMA2'  # 串口屏
+    SCREEN_BAUD = 9600
+    ```
 
-#### Helper Functions
-- **`find_camera` Function**: Searches for available cameras and returns a camera object.
-- **`main` Function**: The main entry point of the program. Initializes devices, loads the model, starts the camera, and enters a loop to read frames, perform detection, and display results.
+## 使用方法
 
-### Usage Instructions
-1. **Environment Setup**: Ensure all dependencies are installed and place the YOLO model file (`best.pt`) in the specified path.
-2. **Connect Devices**: Connect the camera, STM32 microcontroller, and serial screen, configuring the appropriate serial parameters.
-3. **Run the Program**: Execute the script. The system will initialize the camera and start real-time waste classification detection.
-4. **View Results**: Classification results will be sent to the STM32 and displayed on the serial screen. If the debug window is enabled, detection boxes and detailed information will be visible in the window.
-5. **Exit the Program**: Press the `q` key or use a keyboard interrupt (Ctrl+C) to exit the program. The system will automatically release resources.
+运行主程序：
 
-### Notes
-- Ensure the camera is correctly connected and recognized by the system.
-- Serial device paths and baud rates should match the actual hardware configurations.
-- If no GPU is available, the system will switch to CPU inference, which may impact detection speed.
+```bash
+python your_script.py
+```
+
+运行后，系统将执行以下步骤：
+
+1. **初始化GPU**：检测是否有可用的GPU，加速模型推理。
+2. **初始化串口**：尝试连接STM32和串口显示屏。
+3. **启动摄像头**：查找并打开可用的摄像头设备。
+4. **实时检测**：从摄像头读取帧，进行物体检测和分类，并通过串口发送结果。
+5. **调试窗口**（可选）：如果启用调试窗口，将显示带有检测结果的实时视频流。
+
+按 `q` 键可退出程序。
+
+## 串口配置说明
+
+- **STM32串口**：用于接收分类结果，连接到STM32的TX/RX引脚。请确保波特率和端口号正确配置。
+- **串口显示屏**：用于显示分类信息，连接到串口屏的TX/RX引脚。默认使用GB2312编码发送中文信息。
+
+### 配置参数
+
+在代码中，可以通过修改以下变量来调整串口配置：
+
+```python
+STM32_PORT = '/dev/ttyS0'  # STM32串口
+STM32_BAUD = 115200
+SCREEN_PORT = '/dev/ttyAMA2'  # 串口屏
+SCREEN_BAUD = 9600
+```
+
+## 模块说明
+
+### `SerialManager` 类
+
+负责管理与STM32和串口显示屏的串口通信，包括数据的发送与接收。
+
+- **初始化串口**：尝试打开STM32和串口屏的串口连接。
+- **发送数据到STM32**：根据分类结果发送对应的分类ID。
+- **发送数据到串口屏**：将分类信息以指定编码发送到串口屏。
+- **接收STM32数据**：在后台线程中持续接收来自STM32的数据。
+
+### `WasteClassifier` 类
+
+负责将细分类别映射到大分类，并提供分类信息。
+
+- **`get_category_info`**：根据类别ID获取详细分类信息。
+- **`print_classification`**：打印分类信息。
+
+### `YOLODetector` 类
+
+负责加载YOLO模型并进行物体检测和分类。
+
+- **初始化模型**：加载YOLO模型，并设置设备（GPU或CPU）。
+- **`detect` 方法**：对输入帧进行检测，绘制检测结果（可选），并发送分类信息到串口。
+
+### 主函数 `main`
+
+- **GPU检测**：检查是否有可用的GPU。
+- **初始化检测器和串口管理器**。
+- **启动摄像头并进入检测循环**。
+- **处理键盘中断，清理资源**。
+
+## 配置选项
+
+在代码开头，可以通过修改以下全局变量来调整系统行为：
+
+```python
+DEBUG_WINDOW = False  # 是否启用调试窗口
+ENABLE_SERIAL = True  # 是否启用串口通信
+CONF_THRESHOLD = 0.9  # 检测置信度阈值
+```
+
+- **`DEBUG_WINDOW`**：开启后，将显示带有检测结果的实时视频窗口。
+- **`ENABLE_SERIAL`**：开启后，将启用与STM32和串口屏的串口通信。
+- **`CONF_THRESHOLD`**：设置检测的置信度阈值，只有高于该阈值的检测结果才会被处理。
+
+## 注意事项
+
+- **串口权限**：运行程序的用户需要有访问串口设备的权限，必要时可以使用`sudo`运行程序或调整设备权限。
+- **模型兼容性**：确保使用的YOLO模型与代码兼容，类别名称和ID需对应正确。
+- **编码设置**：串口屏默认使用GB2312编码发送中文信息，确保接收端能够正确解码。
+- **资源释放**：程序退出时会自动关闭串口和摄像头，确保系统资源得到正确释放。
+
+## 常见问题
+
+### 未检测到GPU
+
+如果系统未检测到GPU，程序将自动切换到CPU进行推理。可以通过修改代码或硬件配置来启用GPU加速。
+
+### 无法连接串口设备
+
+请检查串口设备是否正确连接，并确认端口号和波特率设置是否正确。确保运行程序的用户有权限访问相应的串口设备。
+
+### 摄像头无法启动
+
+请确保摄像头已正确连接，并且驱动安装完毕。可以使用其他应用程序（如`cheese`）测试摄像头是否正常工作。
+
+## 许可证
+
+本项目采用MIT许可证，详细信息请参见[LICENSE](LICENSE)。
+
+## 致谢
+
+感谢所有开源项目和库的贡献者，特别是YOLO和Ultralytics团队，为本项目提供了强大的支持。
+
+# 贡献
+
+欢迎任何形式的贡献！请提交Issue或Pull Request以分享您的改进和建议。
+
+# 联系我们
+
+如有任何问题或建议，请联系 [your-email@example.com](mailto:your-email@example.com)。
+
+# 示例
+
+![系统架构图](path/to/your/image.png)
+
+*注意：图片仅供参考，实际系统可能有所不同。*
+
+# 结束语
+
+感谢您使用本垃圾分类检测系统！希望它能为您的项目带来帮助。
+
+# License
+
+MIT License. See [LICENSE](LICENSE) for more information.
+
+# 参考资料
+
+- [YOLOv8官方文档](https://docs.ultralytics.com/)
+- [PySerial文档](https://pyserial.readthedocs.io/)
+- [OpenCV文档](https://docs.opencv.org/)
