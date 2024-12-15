@@ -174,7 +174,7 @@ class WasteClassifier:
             4: 1,  # can -> 可回收垃圾
             5: 2,  # battery -> 有害垃圾
             6: 2,  # drug -> 有害垃圾
-            7: 1,  # inner_packing -> 可回收垃圾
+            7: 2,  # inner_packing -> 有害垃圾
             8: 3,  # tile -> 其他垃圾
             9: 3,  # stone -> 其他垃圾
             10: 3  # brick -> 其他垃圾
