@@ -212,11 +212,7 @@ class WasteClassifier:
 class YOLODetector:
     def __init__(self, model_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # 加载模型
         self.model = YOLO(model_path)
-
-        # 类别名称和颜色映射
         self.class_names = {
             0: 'potato',
             1: 'daikon',
@@ -231,13 +227,11 @@ class YOLODetector:
             10: 'brick'
         }
 
-        # 为每个类别生成随机颜色
         self.colors = {}
         np.random.seed(42)
         for class_id in self.class_names:
             self.colors[class_id] = tuple(map(int, np.random.randint(0, 255, 3)))
 
-        # 初始化串口管理器
         self.serial_manager = SerialManager()
 
     def detect(self, frame):
@@ -246,9 +240,7 @@ class YOLODetector:
             result = results[0]
             boxes = result.boxes
             
-            # 只处理置信度最高的检测结果
             if len(boxes) > 0:
-                # 获取最高置信度的检测框
                 confidences = [box.conf[0].item() for box in boxes]
                 max_conf_idx = np.argmax(confidences)
                 box = boxes[max_conf_idx]
@@ -260,9 +252,9 @@ class YOLODetector:
                 confidence = box.conf[0].item()
                 class_id = int(box.cls[0].item())
                 
-                # 使用WasteClassifier获取分类信息
                 waste_classifier = WasteClassifier()
-                display_text = waste_classifier.print_classification(class_id)
+                specific_name, category_id, category_name = waste_classifier.get_category_info(class_id)
+                display_text = f"{specific_name}({category_name})"
                 
                 color = self.colors.get(class_id, (255, 255, 255))
                 
@@ -281,10 +273,8 @@ class YOLODetector:
                 print(f"边界框位置: ({x1}, {y1}), ({x2}, {y2})")
                 print(f"中心点位置: ({center_x}, {center_y})")
                 print("-" * 30)
-                
-                # 发送检测结果到STM32
-                self.serial_manager.send_to_stm32(class_id)
-                # 发送检测结果到串口屏
+                #self.serial_manager.send_to_stm32(class_id)
+                self.serial_manager.send_to_stm32(category_id)
                 self.serial_manager.send_to_screen(display_text)
         
         return frame
