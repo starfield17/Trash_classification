@@ -15,7 +15,7 @@ CONF_THRESHOLD = 0.9  # 置信度阈值
 
 # 串口配置
 STM32_PORT = '/dev/ttyS0'  # STM32串口(TX-> GPIO14,RX->GPIO15)
-STM32_BAUD = 9600
+STM32_BAUD = 115200
 SCREEN_PORT = '/dev/ttyAMA2'  # 串口屏串口(TX-GPIO0> ,RX->GPIO1)
 SCREEN_BAUD = 9600
 
@@ -112,34 +112,45 @@ class SerialManager:
             print(f"串口屏输出失败: {str(e)}")
 
     def send_to_stm32(self, class_id):
-        """发送数据到STM32，添加了时间间隔控制和缓冲区清理"""
+        """发送数据到STM32，根据data的定义方式决定发送方式"""
         if not self.stm32_port or not self.stm32_port.is_open:
             return
-
+    
         current_time = time.time()
         if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
             return  # 如果距离上次发送时间太短，直接返回
-
+    
         try:
-            # 清空接收缓冲区
+            # 清空缓冲区
             self.stm32_port.reset_input_buffer()
-            # 清空发送缓冲区
             self.stm32_port.reset_output_buffer()
             
-            # 构建完整的数据帧
+            # 定义data，根据需要选择下面两种方式之一：
+            # 方式1：发送字符串
             data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
-            self.stm32_port.write(data)
+            
+            # 方式2：发送单字节
+            # data = int(class_id)
+            
+            # 根据data类型处理
+            if isinstance(data, int):
+                # 如果data是整数，转换为单字节发送
+                send_data = bytes([data])
+            else:
+                # 如果data是字节串或其他类型，直接发送
+                send_data = data
+                
+            self.stm32_port.write(send_data)
             # 等待数据发送完成
             self.stm32_port.flush()
             
             self.last_stm32_send_time = current_time
-            print(f"发送数据: {data}")
+            print(f"发送数据: {send_data}")
             
         except serial.SerialTimeoutException:
             print("串口发送超时")
         except Exception as e:
             print(f"串口发送错误: {str(e)}")
-
     def cleanup(self):
         """清理串口资源"""
         self.is_running = False
