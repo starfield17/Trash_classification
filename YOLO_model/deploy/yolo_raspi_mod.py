@@ -22,7 +22,8 @@ SCREEN_BAUD = 9600
 # 串口通信协议
 FRAME_HEADER = b''  # 帧头(STM32)可为空
 FRAME_FOOTER = b''  # 帧尾(STM32)可为空
-SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符 等同于SCREEN_END = bytes.fromhex('ff ff ff')
+#SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
+SCREEN_END = bytes.fromhex('ff ff ff')
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
@@ -38,6 +39,24 @@ class SerialManager:
         self.last_stm32_send_time = 0
         self.last_screen_send_time = 0
         self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
+        
+        # 垃圾计数和记录相关
+        self.garbage_count = 0  # 垃圾计数器
+        self.detected_items = []  # 存储检测到的垃圾记录
+        
+        # 防重复计数和稳定性检测相关
+        self.last_count_time = 0  # 上次计数的时间
+        self.COUNT_COOLDOWN = 5.0  # 计数冷却时间（秒）
+        self.is_counting_locked = False  # 计数锁定状态
+        self.last_detected_type = None  # 上次检测到的垃圾类型
+        
+        # 稳定性检测相关
+        self.current_detection = None  # 当前正在检测的物体类型
+        self.detection_start_time = 0  # 开始检测的时间
+        self.STABILITY_THRESHOLD = 1.0  # 稳定识别所需时间（秒）
+        self.stable_detection = False  # 是否已经稳定识别
+        self.detection_lost_time = 0  # 丢失检测的时间
+        self.DETECTION_RESET_TIME = 0.5  # 检测重置时间（秒）
 
         # 初始化STM32串口
         if ENABLE_SERIAL:
@@ -46,7 +65,7 @@ class SerialManager:
                     STM32_PORT, 
                     STM32_BAUD, 
                     timeout=0.1,
-                    write_timeout=0.1  # 添加写超时
+                    write_timeout=0.1
                 )
                 print(f"STM32串口已初始化: {STM32_PORT}")
             except Exception as e:
@@ -59,14 +78,15 @@ class SerialManager:
                 SCREEN_PORT,
                 SCREEN_BAUD,
                 timeout=0.1,
-                write_timeout=0.1  # 添加写超时
+                write_timeout=0.1
             )
             print(f"串口屏已初始化: {SCREEN_PORT}")
+            self.init_screen_table()  # 初始化表格
         except Exception as e:
             print(f"串口屏初始化失败: {str(e)}")
             self.screen_port = None
 
-        # 若STM32串口初始化成功，则启动数据接收线程
+        # 启动数据接收线程
         if self.stm32_port:
             self.receive_thread = threading.Thread(target=self.receive_stm32_data)
             self.receive_thread.daemon = True
@@ -80,77 +100,141 @@ class SerialManager:
                 print(f"从STM32收到数据: {data}")
             time.sleep(0.1)
 
-    def send_to_screen(self, text, encoding="GB2312"):
-        """发送数据到串口屏，添加了时间间隔控制和缓冲区清理"""
+    def check_detection_stability(self, garbage_type):
+        """检查检测的稳定性"""
+        current_time = time.time()
+        
+        # 如果检测到了新的物体类型，或者检测中断超过重置时间
+        if (garbage_type != self.current_detection or 
+            (current_time - self.detection_lost_time > self.DETECTION_RESET_TIME and 
+             self.detection_lost_time > 0)):
+            # 重置检测状态
+            self.current_detection = garbage_type
+            self.detection_start_time = current_time
+            self.stable_detection = False
+            self.detection_lost_time = 0
+            return False
+        
+        # 如果已经达到稳定识别时间
+        if (current_time - self.detection_start_time >= self.STABILITY_THRESHOLD and 
+            not self.stable_detection):
+            self.stable_detection = True
+            return True
+            
+        return self.stable_detection
+
+    def can_count_new_garbage(self, garbage_type):
+        """检查是否可以计数新垃圾"""
+        current_time = time.time()
+        
+        # 检查稳定性
+        if not self.check_detection_stability(garbage_type):
+            return False
+        
+        # 如果是新的垃圾类型，重置锁定状态
+        if garbage_type != self.last_detected_type:
+            self.is_counting_locked = False
+            self.last_detected_type = garbage_type
+        
+        # 检查是否在冷却时间内
+        if self.is_counting_locked:
+            if current_time - self.last_count_time >= self.COUNT_COOLDOWN:
+                self.is_counting_locked = False  # 解除锁定
+            else:
+                return False
+        
+        return True
+
+    def update_garbage_count(self, garbage_type):
+        """更新垃圾计数并更新显示"""
+        if not self.can_count_new_garbage(garbage_type):
+            return
+        
+        self.garbage_count += 1
+        self.detected_items.append({
+            'count': self.garbage_count,
+            'type': garbage_type,
+            'quantity': 1,
+            'status': "正确"
+        })
+        
+        # 更新计数相关的状态
+        self.last_count_time = time.time()
+        self.is_counting_locked = True
+        self.last_detected_type = garbage_type
+        
+        # 更新显示
+        self.update_screen_table()
+
+    def init_screen_table(self):
+        """初始化串口屏表格"""
+        # 清空所有文本框
+        for i in range(1, 9):  # 8行
+            for j in range(1, 5):  # 4列
+                self.send_to_screen_component(f"x{i}y{j}", "")
+    
+    def send_to_screen_component(self, component_id, text, encoding="UTF-8"):
+        """发送数据到特定的串口屏组件"""
         if not self.screen_port or not self.screen_port.is_open:
             return
 
-        current_time = time.time()
-        if current_time - self.last_screen_send_time < self.MIN_SEND_INTERVAL:
-            return  # 如果距离上次发送时间太短，直接返回
-
         try:
-            # 清空缓冲区
-            self.screen_port.reset_input_buffer()
-            self.screen_port.reset_output_buffer()
-            
-            # 构建并发送命令
-            command = f't0.txt=\"{text}\"'.encode(encoding)
+            command = f'{component_id}.txt=\"{text}\"'.encode(encoding)
             self.screen_port.write(command)
-            time.sleep(0.01)  # 串口屏需要的延时
+            time.sleep(0.01)
             self.screen_port.write(SCREEN_END)
-            
-            # 等待数据发送完成
             self.screen_port.flush()
             
-            self.last_screen_send_time = current_time
-            print(f"串口屏输出: {text}")
-            
-        except serial.SerialTimeoutException:
-            print("串口屏发送超时")
         except Exception as e:
-            print(f"串口屏输出失败: {str(e)}")
+            print(f"串口屏组件 {component_id} 输出失败: {str(e)}")
+
+    def update_screen_table(self):
+        """更新串口屏表格显示"""
+        # 确保只显示最近的8条记录
+        recent_items = self.detected_items[-8:]
+        
+        # 先清空所有单元格
+        self.init_screen_table()
+        
+        # 更新显示内容
+        for i, item in enumerate(recent_items, 1):
+            # 序号
+            self.send_to_screen_component(f"x{i}y1", str(item['count']))
+            # 垃圾种类
+            self.send_to_screen_component(f"x{i}y2", item['type'])
+            # 数量
+            self.send_to_screen_component(f"x{i}y3", str(item['quantity']))
+            # 状态
+            self.send_to_screen_component(f"x{i}y4", item['status'])
+
+    def send_to_screen(self, text, encoding="UTF-8"):
+        """为保持兼容性保留原方法，但主要使用新的表格更新方法"""
+        self.update_garbage_count(text)
 
     def send_to_stm32(self, class_id):
-        """发送数据到STM32，根据data的定义方式决定发送方式"""
+        """发送数据到STM32"""
         if not self.stm32_port or not self.stm32_port.is_open:
             return
     
         current_time = time.time()
         if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
-            return  # 如果距离上次发送时间太短，直接返回
+            return
     
         try:
-            # 清空缓冲区
             self.stm32_port.reset_input_buffer()
             self.stm32_port.reset_output_buffer()
             
-            # 定义data，根据需要选择下面两种方式之一：
-            # 方式1：发送字符串
+            # 发送数据
             data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
-            
-            # 方式2：发送单字节
-            # data = int(class_id)
-            
-            # 根据data类型处理
-            if isinstance(data, int):
-                # 如果data是整数，转换为单字节发送
-                send_data = bytes([data])
-            else:
-                # 如果data是字节串或其他类型，直接发送
-                send_data = data
-                
-            self.stm32_port.write(send_data)
-            # 等待数据发送完成
+            self.stm32_port.write(data)
             self.stm32_port.flush()
             
             self.last_stm32_send_time = current_time
-            print(f"发送数据: {send_data}")
+            print(f"发送数据: {data}")
             
-        except serial.SerialTimeoutException:
-            print("串口发送超时")
         except Exception as e:
             print(f"串口发送错误: {str(e)}")
+
     def cleanup(self):
         """清理串口资源"""
         self.is_running = False
@@ -158,7 +242,7 @@ class SerialManager:
             self.stm32_port.close()
         if self.screen_port and self.screen_port.is_open:
             self.screen_port.close()
-
+            
 class WasteClassifier:
     def __init__(self):
         # 原始类别映射
