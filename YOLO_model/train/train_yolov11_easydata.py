@@ -139,7 +139,6 @@ def convert_bbox_to_yolo(bbox, img_width, img_height):
     height = max(0, min(1, height))
     
     return x_center, y_center, width, height
-
 def convert_labels(json_file, txt_file):
     """转换标签文件从新的JSON格式到YOLO格式"""
     try:
@@ -147,17 +146,22 @@ def convert_labels(json_file, txt_file):
             print(f"Warning: JSON file not found: {json_file}")
             return False
             
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # 获取图片尺寸
+        # 获取图片路径
         img_path = json_file.replace('.json', '.jpg')
+        if not os.path.exists(img_path):
+            img_path = json_file.replace('.json', '.png')
+        
+        # 读取图片获取尺寸
         img = cv2.imread(img_path)
         if img is None:
             print(f"Warning: Cannot read image: {img_path}")
             return False
         
         img_height, img_width = img.shape[:2]
+        
+        # 读取JSON标签
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
         
         # 类别映射
         class_mapping = {
@@ -167,6 +171,7 @@ def convert_labels(json_file, txt_file):
             'tile': 8, 'stone': 9, 'brick': 10
         }
         
+        # 写入YOLO格式标签
         with open(txt_file, 'w', encoding='utf-8') as f:
             for label in data['labels']:
                 try:
@@ -180,10 +185,14 @@ def convert_labels(json_file, txt_file):
                         label, img_width, img_height)
                     
                     f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+                except KeyError as e:
+                    print(f"Warning: Missing key in label data in {json_file}: {e}")
+                    continue
                 except Exception as e:
                     print(f"Warning: Error processing label in {json_file}: {e}")
                     continue
         return True
+        
     except Exception as e:
         print(f"Error processing {json_file}: {e}")
         return False
