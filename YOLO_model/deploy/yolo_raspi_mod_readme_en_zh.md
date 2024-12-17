@@ -43,24 +43,17 @@ pip install opencv-python torch ultralytics numpy pyserial
 
 ## 安装指南
 
-1. **克隆项目仓库**
-
-    ```bash
-    git clone https://github.com/your-repo/waste-classifier.git
-    cd waste-classifier
-    ```
-
-2. **安装Python依赖**
+1. **安装Python依赖**
 
     ```bash
     pip install -r requirements.txt
     ```
 
-3. **准备YOLO模型**
+2. **准备YOLO模型**
 
     将训练好的YOLO模型文件（如`best.pt`）放置在项目根目录下，或根据需要修改代码中的模型路径。
 
-4. **配置串口**
+3. **配置串口**
 
     根据实际硬件连接，修改代码中的串口配置参数：
 
