@@ -144,10 +144,13 @@ def prepare_dataset(data_dir, valid_pairs):
     for split_name, files in splits.items():
         print(f"\nProcessing {split_name} split...")
         for img_file in files:
+            # 修改这部分代码
+            base_name = os.path.splitext(img_file)[0]
             src_img = os.path.join(data_dir, img_file)
-            src_json = os.path.join(data_dir, img_file.replace('.jpg', '.json'))
+            # 确保我们使用正确的JSON文件名
+            src_json = os.path.join(data_dir, base_name + '.json')
             dst_img = os.path.join(split_name, 'images', img_file)
-            dst_txt = os.path.join(split_name, 'labels', img_file.replace('.jpg', '.txt'))
+            dst_txt = os.path.join(split_name, 'labels', base_name + '.txt')
             
             # 复制图片和转换标签
             shutil.copy2(src_img, dst_img)
