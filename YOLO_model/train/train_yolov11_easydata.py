@@ -13,19 +13,22 @@ datapath='./label'  # 根据实际情况修改
 def check_and_clean_dataset(data_dir):
     """检查数据集完整性并清理无效数据"""
     print("正在检查数据集完整性...")
-    
     # 获取所有图片文件
-    image_files = [f for f in os.listdir(data_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    image_extensions = ('.jpg', '.jpeg', '.png')
+    image_files = [f for f in os.listdir(data_dir) if f.lower().endswith(image_extensions)]
     valid_pairs = []
-    
     print(f"找到 {len(image_files)} 张图片")
-    
     # 检查每个图片是否有效且有对应的标签文件
     for img_file in image_files:
         img_path = os.path.join(data_dir, img_file)
         base_name = os.path.splitext(img_file)[0]
+        # 确保基名不包含额外的扩展名，例如避免 'test.png.json'
+        if '.' in base_name:
+            # 例如 '录制于 2024-12-13 19-07-10.641569 的视频_21'
+            # 这样的命名可能导致问题
+            # 这里可以根据具体情况调整
+            pass  # 如果需要，可以添加额外的处理逻辑
         json_file = os.path.join(data_dir, base_name + '.json')
-        
         # 检查图片完整性
         try:
             img = cv2.imread(img_path)
@@ -43,26 +46,30 @@ def check_and_clean_dataset(data_dir):
             print(f"警告: 读取图片 {img_file} 时出错: {e}")
             continue
             
-        # 检查标签文件
+        # 检查标签文件是否存在且有效
         if os.path.exists(json_file):
-            try:
-                with open(json_file, 'r', encoding='utf-8') as f:
-                    label_data = json.load(f)
-                    
-                # 验证标签数据结构
-                if 'labels' not in label_data:
-                    print(f"警告: 标签文件结构无效: {json_file}")
+            # 确保标签文件确实是一个 JSON 文件，而不是其他格式
+            if not json_file.lower().endswith('.json'):
+                print(f"警告: 标签文件扩展名不正确 (应为 .json): {json_file}")
+                continue
+            
+            # 验证 JSON 文件内容
+            if validate_json_file(json_file):
+                try:
+                    with open(json_file, 'r', encoding='utf-8') as f:
+                        label_data = json.load(f)
+                        
+                    # 验证标签数据结构
+                    if 'labels' not in label_data:
+                        print(f"警告: 标签文件结构无效 (缺少 'labels' 键): {json_file}")
+                        continue
+                        
+                    valid_pairs.append(img_file)
+                except Exception as e:
+                    print(f"警告: 处理标签文件 {json_file} 时发生错误: {e}")
                     continue
-                    
-                valid_pairs.append(img_file)
-            except json.JSONDecodeError as jde:
-                print(f"警告: JSON 解码错误在文件 {json_file}: {jde}")
-                continue
-            except UnicodeDecodeError as ude:
-                print(f"警告: Unicode 解码错误在文件 {json_file}: {ude}")
-                continue
-            except Exception as e:
-                print(f"警告: 处理文件 {json_file} 时发生意外错误: {e}")
+            else:
+                # JSON 文件无效，跳过
                 continue
         else:
             print(f"警告: 找不到对应的标签文件: {json_file}")
@@ -70,18 +77,24 @@ def check_and_clean_dataset(data_dir):
     print(f"找到 {len(valid_pairs)} 对有效的图片和标签文件")
     return valid_pairs
     
-def validate_json_files(data_dir):
-    """验证所有 JSON 文件的有效性"""
-    json_files = [f for f in os.listdir(data_dir) if f.lower().endswith('.json')]
-    for json_file in json_files:
-        json_path = os.path.join(data_dir, json_file)
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                json.load(f)
-            print(f"有效的 JSON 文件: {json_file}")
-        except Exception as e:
-            print(f"无效的 JSON 文件: {json_file} - 错误: {e}")
-
+def validate_json_file(json_path):
+    """
+    验证 JSON 文件是否有效。
+    返回 True 表示有效，False 表示无效。
+    """
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            json.load(f)
+        return True
+    except json.JSONDecodeError:
+        print(f"警告: JSON 解码错误 - 无效的 JSON 文件: {json_path}")
+        return False
+    except UnicodeDecodeError:
+        print(f"警告: Unicode 解码错误 - 无效的 JSON 文件: {json_path}")
+        return False
+    except Exception as e:
+        print(f"警告: 无法读取 JSON 文件 {json_path} - 错误: {e}")
+        return False
 
 
 def create_data_yaml():
