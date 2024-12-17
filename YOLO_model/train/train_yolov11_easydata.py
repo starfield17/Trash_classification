@@ -14,7 +14,7 @@ def check_and_clean_dataset(data_dir):
     print("Checking dataset integrity...")
     
     # 获取所有图片和标签文件
-    image_files = [f for f in os.listdir(data_dir) if f.endswith(('.jpg', '.jpeg', '.png'))]
+    image_files = [f for f in os.listdir(data_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     valid_pairs = []
     
     print(f"Found {len(image_files)} total images")
@@ -22,9 +22,7 @@ def check_and_clean_dataset(data_dir):
     # 检查每个图片是否有效且有对应的标签文件
     for img_file in image_files:
         img_path = os.path.join(data_dir, img_file)
-        json_file = os.path.join(data_dir, img_file.replace('.jpg', '.json')
-                                              .replace('.jpeg', '.json')
-                                              .replace('.png', '.json'))
+        json_file = os.path.join(data_dir, os.path.splitext(img_file)[0] + '.json')
         
         # 检查图片完整性
         try:
