@@ -413,64 +413,115 @@ def augment_validation_set(num_augmentations=2):
     
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
-def train_yolo():
-    """改进的YOLO训练配置"""
-    model = YOLO('yolo11n.pt')
-    
-    results = model.train(
-        data='data.yaml',
-        epochs=200,  # 增加到200轮
-        imgsz=640,
-        batch=24,
-        workers=16,
-        device='0',
-        patience=50,
-        save_period=5,
-        exist_ok=True,
-        project=os.path.dirname(os.path.abspath(__file__)),
-        name='runs/train',
-        
-        # 优化器参数调整
-        optimizer='AdamW',
-        lr0=0.0005,
-        lrf=0.01,
-        # scheduler='cosine',  # 移除无效参数
-        momentum=0.937,
-        weight_decay=0.0005,
-        warmup_epochs=10,
-        warmup_momentum=0.5,
-        warmup_bias_lr=0.05,
-        
-        # 损失函数权重调整
-        box=4.0,
-        cls=1.0,
-        dfl=1.5,
-        
-        # 基础数据增强参数
-        augment=True,
-        degrees=5.0,
-        scale=0.2,
-        fliplr=0.5,
-        flipud=0.0,
-        hsv_h=0.01,
-        hsv_s=0.2,
-        hsv_v=0.1,
-        
-        # 关闭复杂的数据增强
-        mosaic=0,
-        mixup=0,
-        copy_paste=0,
-        
-        # 添加早停和模型评估配置
-        close_mosaic=0,
-        nbs=64,
-        overlap_mask=False,
-        multi_scale=False,
-        single_cls=False,
-        
-        # 启用混合精度
-        # precision=16,  # 移除无效参数
-    )
+def train_yolo(use_augmentation=False):
+   """改进的YOLO训练配置，增加数据增强开关
+   Args:
+       use_augmentation (bool): 是否启用数据增强，默认为True
+   """
+   model = YOLO('yolo11n.pt')
+   
+   # 基础训练参数
+   train_args = {
+       'data': 'data.yaml',
+       'epochs': 200,          # 可选: 300(更充分训练), 150(如果提前收敛)
+       'imgsz': 640,          # 可选: 1024(更好的大目标检测), 512(更快的训练速度)
+       'batch': 24,           # 可选: 32/48(GPU内存允许时), 16(内存不足时)
+       'workers': 16,
+       'device': '0',
+       'patience': 50,        # 可选: 30(更快停止), 100(更有耐心)
+       'save_period': 5,
+       'exist_ok': True,
+       'project': os.path.dirname(os.path.abspath(__file__)),
+       'name': 'runs/train',
+       
+       # 优化器参数
+       'optimizer': 'AdamW',  # 可选: 'SGD'(经典优化器), 'Adam'(不带权重衰减)
+       'lr0': 0.0005,        # 可选: 0.001(更快收敛), 0.0001(更稳定)
+       'lrf': 0.01,          # 可选: 0.05(更缓和衰减), 0.001(更激进衰减)
+       'momentum': 0.937,     # 可选: 0.9(标准设置), 0.95(更强动量)
+       'weight_decay': 0.0005,# 可选: 0.001(更强正则化), 0.0001(更弱正则化)
+       'warmup_epochs': 10,   # 可选: 5(简单数据集), 15-20(复杂数据集)
+       'warmup_momentum': 0.5,
+       'warmup_bias_lr': 0.05,
+       
+       # 损失函数权重
+       'box': 4.0,           # 可选: 5.0(如果定位不准)
+       'cls': 1.0,           # 可选: 1.5-2.0(如果分类不准)
+       'dfl': 1.5,           # 可选: 2.0(如果需要更精确的定位)
+       
+       # 其他基础配置
+       'close_mosaic': 0,
+       'nbs': 64,            # 可选: 32或128
+       'overlap_mask': False,
+       'multi_scale': False,
+       'single_cls': False,
+   }
+   
+   # 数据集较大时的优化配置示例:
+   # train_args.update({
+   #     'batch': 32,
+   #     'lr0': 0.001,
+   #     'epochs': 150,
+   #     'patience': 30
+   # })
+   
+   # 数据集较小时的优化配置示例:
+   # train_args.update({
+   #     'batch': 16,
+   #     'lr0': 0.0001,
+   #     'weight_decay': 0.001,
+   #     'warmup_epochs': 15
+   # })
+   
+   # 注重检测精度时的优化配置示例:
+   # train_args.update({
+   #     'imgsz': 1024,
+   #     'box': 5.0,
+   #     'dfl': 2.0,
+   #     'patience': 100
+   # })
+   
+   # 注重训练速度时的优化配置示例:
+   # train_args.update({
+   #     'imgsz': 512,
+   #     'epochs': 150,
+   #     'patience': 30,
+   #     'batch': 48  # 如果GPU内存允许
+   # })
+   
+   # 数据增强参数，仅在use_augmentation=True时添加
+   if use_augmentation:
+       augmentation_args = {
+           'augment': True,
+           'degrees': 5.0,
+           'scale': 0.2,
+           'fliplr': 0.5,
+           'flipud': 0.0,
+           'hsv_h': 0.01,
+           'hsv_s': 0.2,
+           'hsv_v': 0.1,
+           'mosaic': 0,  # 保持关闭复杂增强
+           'mixup': 0,
+           'copy_paste': 0,
+       }
+       train_args.update(augmentation_args)
+   else:
+       # 关闭所有数据增强
+       train_args.update({
+           'augment': False,
+           'degrees': 0.0,
+           'scale': 0.0,
+           'fliplr': 0.0,
+           'flipud': 0.0,
+           'hsv_h': 0.0,
+           'hsv_s': 0.0,
+           'hsv_v': 0.0,
+           'mosaic': 0,
+           'mixup': 0,
+           'copy_paste': 0,
+       })
+   
+   results = model.train(**train_args)
 
 
 def main():
