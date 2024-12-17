@@ -421,8 +421,8 @@ def train_yolo():
         data='data.yaml',
         epochs=200,  # 增加到200轮
         imgsz=640,
-        batch=16,
-        workers=8,
+        batch=24,
+        workers=16,
         device='0',
         patience=50,
         save_period=5,
