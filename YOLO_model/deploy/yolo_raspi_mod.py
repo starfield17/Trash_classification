@@ -50,7 +50,7 @@ class SerialManager:
         self.is_counting_locked = False  # 计数锁定状态
         self.last_detected_type = None  # 上次检测到的垃圾类型
         
-        # 稳定性检测相关
+        # 稳定性检测相关(当前物体)
         self.current_detection = None  # 当前正在检测的物体类型
         self.detection_start_time = 0  # 开始检测的时间
         self.STABILITY_THRESHOLD = 1.0  # 稳定识别所需时间（秒）
@@ -94,7 +94,7 @@ class SerialManager:
 
     def receive_stm32_data(self):
         """接收STM32数据的线程函数"""
-        buffer_size = 1024  # 设置合理的缓冲区大小
+        buffer_size = 10240  # 设置合理的缓冲区大小
         
         while self.is_running and self.stm32_port and self.stm32_port.is_open:
             try:
