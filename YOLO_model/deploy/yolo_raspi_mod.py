@@ -73,18 +73,18 @@ class SerialManager:
                 self.stm32_port = None
 
         # 初始化串口屏
-        try:
-            self.screen_port = serial.Serial(
-                SCREEN_PORT,
-                SCREEN_BAUD,
-                timeout=0.1,
-                write_timeout=0.1
-            )
-            print(f"串口屏已初始化: {SCREEN_PORT}")
-            self.init_screen_table()  # 初始化表格
-        except Exception as e:
-            print(f"串口屏初始化失败: {str(e)}")
-            self.screen_port = None
+            try:
+                self.screen_port = serial.Serial(
+                    SCREEN_PORT,
+                    SCREEN_BAUD,
+                    timeout=0.1,
+                    write_timeout=0.1
+                )
+                print(f"串口屏已初始化: {SCREEN_PORT}")
+                self.init_screen_table()  # 初始化表格
+            except Exception as e:
+                print(f"串口屏初始化失败: {str(e)}")
+                self.screen_port = None
 
         # 启动数据接收线程
         if self.stm32_port:
