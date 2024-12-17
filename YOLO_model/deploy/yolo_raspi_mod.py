@@ -94,11 +94,55 @@ class SerialManager:
 
     def receive_stm32_data(self):
         """接收STM32数据的线程函数"""
+        buffer_size = 1024  # 设置合理的缓冲区大小
+        
         while self.is_running and self.stm32_port and self.stm32_port.is_open:
-            data = self.stm32_port.read_all()
-            if data:
-                print(f"从STM32收到数据: {data}")
-            time.sleep(0.1)
+            try:
+                # 检查串口是否有数据可读
+                if self.stm32_port.in_waiting > 0:
+                    # 读取数据，限制读取大小
+                    data = self.stm32_port.read(min(self.stm32_port.in_waiting, buffer_size))
+                    
+                    if data:
+                        try:
+                            # 尝试解码数据（去除无效字符）
+                            decoded_data = data.decode('utf-8', errors='replace').strip()
+                            # 过滤掉全是 null 字符或 0xFF 的数据
+                            if any(c not in ['\x00', '\xff'] for c in decoded_data):
+                                # 将数据转换为十六进制字符串
+                                hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
+                                print(f"接收到的原始数据: {hex_data}")
+                                print(f"解码后的数据: {decoded_data}")
+                        except UnicodeDecodeError as e:
+                            hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
+                            print(f"数据解码错误: {str(e)}")
+                            print(f"原始数据: {hex_data}")
+                    
+                    # 清理缓冲区
+                    self.stm32_port.reset_input_buffer()
+                time.sleep(0.01)
+                
+            except serial.SerialException as e:
+                print(f"串口通信错误: {str(e)}")
+                # 尝试重新打开串口
+                try:
+                    if self.stm32_port.is_open:
+                        self.stm32_port.close()
+                    time.sleep(1)  # 等待一秒后重试
+                    self.stm32_port.open()
+                    print("串口重新打开成功")
+                except Exception as reopen_error:
+                    print(f"串口重新打开失败: {str(reopen_error)}")
+                    break  # 如果重新打开失败，退出循环
+                    
+            except Exception as e:
+                print(f"其他错误: {str(e)}")
+                print(f"错误类型: {type(e).__name__}")
+                # 根据需要决定是否终止线程，以下示例选择继续运行
+                # 如果需要终止，可以取消注释下一行
+                # break
+                    
+        print("串口接收线程终止")
 
     def check_detection_stability(self, garbage_type):
         """检查检测的稳定性"""
@@ -208,7 +252,7 @@ class SerialManager:
             self.send_to_screen_component(f"x{i}y4", item['status'])
 
     def send_to_screen(self, text, encoding="UTF-8"):
-        """为保持兼容性保留原方法，但主要使用新的表格更新方法"""
+        """保留原方法，但主要使用新的表格更新方法"""
         self.update_garbage_count(text)
 
     def send_to_stm32(self, class_id):
