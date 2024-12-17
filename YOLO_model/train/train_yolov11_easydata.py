@@ -182,7 +182,7 @@ def convert_labels(json_file, txt_file):
             print(f"Warning: JSON file not found: {json_file}")
             return False
             
-        # 获取图片路径 - 修改这部分代码
+        # 获取图片路径
         base_name = os.path.splitext(json_file)[0]
         possible_extensions = ['.jpg', '.jpeg', '.png']
         img_path = None
@@ -209,6 +209,65 @@ def convert_labels(json_file, txt_file):
         # 读取JSON标签
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        
+        # 类别映射
+        class_mapping = {
+            'potato': 0, 'daikon': 1, 'carrot': 2,
+            'bottle': 3, 'can': 4, 'battery': 5,
+            'drug': 6, 'inner_packing': 7,
+            'tile': 8, 'stone': 9, 'brick': 10
+        }
+        
+        # 写入YOLO格式标签
+        with open(txt_file, 'w', encoding='utf-8') as f:
+            if 'labels' not in data:
+                print(f"Warning: No 'labels' key in {json_file}")
+                return False
+                
+            for label in data['labels']:
+                try:
+                    if 'name' not in label:
+                        print(f"Warning: No 'name' field in label data in {json_file}")
+                        continue
+                        
+                    class_name = label['name']
+                    if class_name not in class_mapping:
+                        print(f"Warning: Unknown class {class_name} in {json_file}")
+                        continue
+                        
+                    class_id = class_mapping[class_name]
+                    
+                    # 检查所需的边界框坐标是否存在
+                    required_keys = ['x1', 'y1', 'x2', 'y2']
+                    if not all(key in label for key in required_keys):
+                        print(f"Warning: Missing bbox coordinates in {json_file}")
+                        continue
+                    
+                    x_center, y_center, width, height = convert_bbox_to_yolo(
+                        label, img_width, img_height)
+                    
+                    # 验证坐标值是否在有效范围内
+                    if all(0 <= val <= 1 for val in [x_center, y_center, width, height]):
+                        f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+                    else:
+                        print(f"Warning: Invalid bbox values in {json_file}")
+                        continue
+                        
+                except KeyError as e:
+                    print(f"Warning: Missing key in label data in {json_file}: {e}")
+                    continue
+                except Exception as e:
+                    print(f"Warning: Error processing label in {json_file}: {e}")
+                    continue
+                    
+        return True
+        
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON format in {json_file}: {e}")
+        return False
+    except Exception as e:
+        print(f"Error processing {json_file}: {e}")
+        return False
 
 def create_augmentation_pipeline():
     """创建更温和的数据增强pipeline"""
