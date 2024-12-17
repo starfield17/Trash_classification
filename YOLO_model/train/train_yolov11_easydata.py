@@ -8,6 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
+
 datapath='./label'  # 根据实际情况修改
 
 def check_and_clean_dataset(data_dir):
@@ -22,11 +23,7 @@ def check_and_clean_dataset(data_dir):
     for img_file in image_files:
         img_path = os.path.join(data_dir, img_file)
         base_name = os.path.splitext(img_file)[0]
-        # 确保基名不包含额外的扩展名，例如避免 'test.png.json'
         if '.' in base_name:
-            # 例如 '录制于 2024-12-13 19-07-10.641569 的视频_21'
-            # 这样的命名可能导致问题
-            # 这里可以根据具体情况调整
             pass  # 如果需要，可以添加额外的处理逻辑
         json_file = os.path.join(data_dir, base_name + '.json')
         # 检查图片完整性
@@ -446,7 +443,7 @@ def train_yolo(use_augmentation=False):
        
        # 损失函数权重
        'box': 4.0,           # 可选: 5.0(如果定位不准)
-       'cls': 1.0,           # 可选: 1.5-2.0(如果分类不准)
+       'cls': 2.0,           # 可选: 1.5-2.0(如果分类不准)
        'dfl': 1.5,           # 可选: 2.0(如果需要更精确的定位)
        
        # 其他基础配置
