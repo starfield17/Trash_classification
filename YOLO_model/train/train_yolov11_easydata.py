@@ -9,36 +9,38 @@ import cv2
 import numpy as np
 from pathlib import Path
 datapath='./label'  # 根据实际情况修改
+
 def check_and_clean_dataset(data_dir):
     """检查数据集完整性并清理无效数据"""
-    print("Checking dataset integrity...")
+    print("正在检查数据集完整性...")
     
-    # 获取所有图片和标签文件
+    # 获取所有图片文件
     image_files = [f for f in os.listdir(data_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
     valid_pairs = []
     
-    print(f"Found {len(image_files)} total images")
+    print(f"找到 {len(image_files)} 张图片")
     
     # 检查每个图片是否有效且有对应的标签文件
     for img_file in image_files:
         img_path = os.path.join(data_dir, img_file)
-        json_file = os.path.join(data_dir, os.path.splitext(img_file)[0] + '.json')
+        base_name = os.path.splitext(img_file)[0]
+        json_file = os.path.join(data_dir, base_name + '.json')
         
         # 检查图片完整性
         try:
             img = cv2.imread(img_path)
             if img is None:
-                print(f"Warning: Corrupted or invalid image file: {img_file}")
+                print(f"警告: 损坏或无效的图片文件: {img_file}")
                 continue
                 
             # 检查图片尺寸是否合理
             height, width = img.shape[:2]
             if height < 10 or width < 10:
-                print(f"Warning: Image too small: {img_file}")
+                print(f"警告: 图片尺寸过小: {img_file}")
                 continue
                 
         except Exception as e:
-            print(f"Warning: Error reading image {img_file}: {e}")
+            print(f"警告: 读取图片 {img_file} 时出错: {e}")
             continue
             
         # 检查标签文件
@@ -49,18 +51,38 @@ def check_and_clean_dataset(data_dir):
                     
                 # 验证标签数据结构
                 if 'labels' not in label_data:
-                    print(f"Warning: Invalid label structure in {json_file}")
+                    print(f"警告: 标签文件结构无效: {json_file}")
                     continue
                     
                 valid_pairs.append(img_file)
-            except json.JSONDecodeError:
-                print(f"Warning: Invalid JSON file: {json_file}")
+            except json.JSONDecodeError as jde:
+                print(f"警告: JSON 解码错误在文件 {json_file}: {jde}")
+                continue
+            except UnicodeDecodeError as ude:
+                print(f"警告: Unicode 解码错误在文件 {json_file}: {ude}")
+                continue
+            except Exception as e:
+                print(f"警告: 处理文件 {json_file} 时发生意外错误: {e}")
                 continue
         else:
-            print(f"Warning: No label file for {img_file}")
+            print(f"警告: 找不到对应的标签文件: {json_file}")
     
-    print(f"Found {len(valid_pairs)} valid image-label pairs")
+    print(f"找到 {len(valid_pairs)} 对有效的图片和标签文件")
     return valid_pairs
+    
+def validate_json_files(data_dir):
+    """验证所有 JSON 文件的有效性"""
+    json_files = [f for f in os.listdir(data_dir) if f.lower().endswith('.json')]
+    for json_file in json_files:
+        json_path = os.path.join(data_dir, json_file)
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                json.load(f)
+            print(f"有效的 JSON 文件: {json_file}")
+        except Exception as e:
+            print(f"无效的 JSON 文件: {json_file} - 错误: {e}")
+
+
 
 def create_data_yaml():
     """创建数据配置文件"""
