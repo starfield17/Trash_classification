@@ -174,6 +174,7 @@ def convert_bbox_to_yolo(bbox, img_width, img_height):
     height = max(0, min(1, height))
     
     return x_center, y_center, width, height
+    
 def convert_labels(json_file, txt_file):
     """转换标签文件从新的JSON格式到YOLO格式"""
     try:
@@ -181,10 +182,21 @@ def convert_labels(json_file, txt_file):
             print(f"Warning: JSON file not found: {json_file}")
             return False
             
-        # 获取图片路径
-        img_path = json_file.replace('.json', '.jpg')
-        if not os.path.exists(img_path):
-            img_path = json_file.replace('.json', '.png')
+        # 获取图片路径 - 修改这部分代码
+        base_name = os.path.splitext(json_file)[0]
+        possible_extensions = ['.jpg', '.jpeg', '.png']
+        img_path = None
+        
+        # 检查所有可能的图片扩展名
+        for ext in possible_extensions:
+            temp_path = base_name + ext
+            if os.path.exists(temp_path):
+                img_path = temp_path
+                break
+                
+        if img_path is None:
+            print(f"Warning: No corresponding image file found for: {json_file}")
+            return False
         
         # 读取图片获取尺寸
         img = cv2.imread(img_path)
@@ -197,40 +209,6 @@ def convert_labels(json_file, txt_file):
         # 读取JSON标签
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
-        # 类别映射
-        class_mapping = {
-            'potato': 0, 'daikon': 1, 'carrot': 2,
-            'bottle': 3, 'can': 4, 'battery': 5,
-            'drug': 6, 'inner_packing': 7,
-            'tile': 8, 'stone': 9, 'brick': 10
-        }
-        
-        # 写入YOLO格式标签
-        with open(txt_file, 'w', encoding='utf-8') as f:
-            for label in data['labels']:
-                try:
-                    class_name = label['name']
-                    if class_name not in class_mapping:
-                        print(f"Warning: Unknown class {class_name} in {json_file}")
-                        continue
-                        
-                    class_id = class_mapping[class_name]
-                    x_center, y_center, width, height = convert_bbox_to_yolo(
-                        label, img_width, img_height)
-                    
-                    f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
-                except KeyError as e:
-                    print(f"Warning: Missing key in label data in {json_file}: {e}")
-                    continue
-                except Exception as e:
-                    print(f"Warning: Error processing label in {json_file}: {e}")
-                    continue
-        return True
-        
-    except Exception as e:
-        print(f"Error processing {json_file}: {e}")
-        return False
 
 def create_augmentation_pipeline():
     """创建更温和的数据增强pipeline"""
