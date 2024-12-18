@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 定义支持的视频文件扩展名
-VIDEO_EXTENSIONS=("mp4" "avi" "mkv" "mov" "flv" "wmv")
+VIDEO_EXTENSIONS=("mp4" "avi" "mkv" "mov" "flv" "wmv" "webm")
 
 # 函数：检查文件是否为视频文件
 is_video_file() {
@@ -57,7 +57,7 @@ if [ -z "$1" ]; then
     echo "  $0 /var/home/user/Videos/"
     echo ""
     echo "支持的视频格式:"
-    echo "  mp4, avi, mkv, mov, flv, wmv"
+    echo "  mp4, avi, mkv, mov, flv, wmv, webm"
     echo "=============================================="
     exit 1
 fi
