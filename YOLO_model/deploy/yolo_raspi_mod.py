@@ -213,8 +213,8 @@ class SerialManager:
     def init_screen_table(self):
         """初始化串口屏表格"""
         # 清空所有文本框
-        for i in range(1, 9):  # 8行
-            for j in range(1, 5):  # 4列
+        for i in range(0, 10):  # 10行
+            for j in range(0, 4):  # 4列
                 self.send_to_screen_component(f"x{i}y{j}", "")
     
     def send_to_screen_component(self, component_id, text, encoding="UTF-8"):
