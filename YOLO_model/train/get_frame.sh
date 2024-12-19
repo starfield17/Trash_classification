@@ -15,7 +15,7 @@ is_video_file() {
     return 1
 }
 
-# 函数：处理单个视频文件
+# 函数：处理单个视频文件，提取帧
 process_video() {
     local VIDEO_PATH="$1"
 
@@ -42,58 +42,170 @@ process_video() {
     echo "帧已保存到目录: $OUTPUT_DIR"
 }
 
-# 检查是否提供了路径
-if [ -z "$1" ]; then
+# 函数：将视频转换为 MP4 格式
+convert_to_mp4() {
+    local VIDEO_PATH="$1"
+
+    # 检查视频文件是否存在
+    if [ ! -f "$VIDEO_PATH" ]; then
+        echo "错误: 文件 '$VIDEO_PATH' 不存在。"
+        return 1
+    fi
+
+    # 获取视频的目录和文件名（不含扩展名）
+    local VIDEO_DIR
+    VIDEO_DIR=$(dirname "$VIDEO_PATH")
+    local VIDEO_FILENAME
+    VIDEO_FILENAME=$(basename "$VIDEO_PATH")
+    local VIDEO_NAME="${VIDEO_FILENAME%.*}"
+    local VIDEO_EXTENSION="${VIDEO_FILENAME##*.}"
+
+    # 如果已经是 mp4 格式，跳过转换
+    if [[ "${VIDEO_EXTENSION,,}" == "mp4" ]]; then
+        echo "文件 '$VIDEO_PATH' 已经是 MP4 格式，跳过转换。"
+        return 0
+    fi
+
+    # 定义输出 MP4 文件路径
+    local OUTPUT_PATH="$VIDEO_DIR/${VIDEO_NAME}.mp4"
+
+    # 使用 ffmpeg 转换为 MP4 格式
+    ffmpeg -i "$VIDEO_PATH" -c:v libx264 -c:a aac "$OUTPUT_PATH" >/dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "已将 '$VIDEO_PATH' 转换为 '$OUTPUT_PATH'"
+    else
+        echo "转换 '$VIDEO_PATH' 失败。"
+    fi
+}
+
+# 显示使用指南
+show_usage() {
     echo "=============================================="
-    echo "          视频帧提取脚本使用指南"
+    echo "          视频处理脚本使用指南"
     echo "=============================================="
-    echo "用法: $0 /path/to/video_or_directory"
+    echo "用法: $0 <command> /path/to/video_or_directory"
+    echo ""
+    echo "命令说明:"
+    echo "  getframe    提取视频帧"
+    echo "  getmp4      将非 MP4 视频转换为 MP4 格式"
     echo ""
     echo "参数说明:"
     echo "  /path/to/video_or_directory  指定单个视频文件或包含视频文件的目录。"
     echo ""
-    echo "示例:"
-    echo "  $0 /var/home/user/Videos/sample.mp4"
-    echo "  $0 /var/home/user/Videos/"
-    echo ""
     echo "支持的视频格式:"
     echo "  mp4, avi, mkv, mov, flv, wmv, webm"
     echo "=============================================="
+}
+
+# 检查是否提供了至少两个参数
+if [ $# -lt 2 ]; then
+    show_usage
     exit 1
 fi
 
-INPUT_PATH="$1"
+COMMAND="$1"
+INPUT_PATH="$2"
 
-# 判断输入是文件还是目录
-if [ -d "$INPUT_PATH" ]; then
-    echo "检测到目录: $INPUT_PATH"
-    echo "开始处理目录中的视频文件..."
-    # 构造 find 命令的搜索条件
-    FIND_CONDITIONS=()
-    for ext in "${VIDEO_EXTENSIONS[@]}"; do
-        FIND_CONDITIONS+=("-iname" "*.${ext}")
-        FIND_CONDITIONS+=("-o")
-    done
-    # 去掉最后的 -o
-    unset 'FIND_CONDITIONS[-1]'
-
-    # 执行 find 命令并读取结果
-    while IFS= read -r -d '' file; do
-        if is_video_file "$file"; then
-            echo "处理视频文件: $file"
-            process_video "$file"
-        else
-            echo "跳过非视频文件: $file"
-        fi
-    done < <(find "$INPUT_PATH" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
-    echo "所有视频文件处理完成。"
-else
-    if is_video_file "$INPUT_PATH"; then
-        echo "处理单个视频文件: $INPUT_PATH"
-        process_video "$INPUT_PATH"
-        echo "视频文件处理完成。"
-    else
-        echo "错误: 文件 '$INPUT_PATH' 不是支持的视频格式。"
-        exit 1
-    fi
+# 检查输入路径是否存在
+if [ ! -e "$INPUT_PATH" ]; then
+    echo "错误: 路径 '$INPUT_PATH' 不存在。"
+    exit 1
 fi
+
+# 根据命令执行相应的功能
+case "$COMMAND" in
+    getframe)
+        # 提取视频帧功能
+        process_input() {
+            local path="$1"
+            if [ -d "$path" ]; then
+                echo "检测到目录: $path"
+                echo "开始处理目录中的视频文件..."
+
+                # 构造 find 命令的搜索条件
+                FIND_CONDITIONS=()
+                for ext in "${VIDEO_EXTENSIONS[@]}"; do
+                    FIND_CONDITIONS+=("-iname" "*.${ext}")
+                    FIND_CONDITIONS+=("-o")
+                done
+                # 去掉最后的 -o
+                unset 'FIND_CONDITIONS[-1]'
+
+                # 执行 find 命令并读取结果
+                while IFS= read -r -d '' file; do
+                    if is_video_file "$file"; then
+                        echo "处理视频文件: $file"
+                        process_video "$file"
+                    else
+                        echo "跳过非视频文件: $file"
+                    fi
+                done < <(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
+                echo "所有视频文件处理完成。"
+            elif [ -f "$path" ]; then
+                if is_video_file "$path"; then
+                    echo "处理单个视频文件: $path"
+                    process_video "$path"
+                    echo "视频文件处理完成。"
+                else
+                    echo "错误: 文件 '$path' 不是支持的视频格式。"
+                    exit 1
+                fi
+            else
+                echo "错误: '$path' 既不是文件也不是目录。"
+                exit 1
+            fi
+        }
+
+        process_input "$INPUT_PATH"
+        ;;
+    getmp4)
+        # 转换视频为 MP4 格式功能
+        convert_input() {
+            local path="$1"
+            if [ -d "$path" ]; then
+                echo "检测到目录: $path"
+                echo "开始转换目录中的非 MP4 视频文件..."
+
+                # 构造 find 命令的搜索条件，排除 mp4
+                FIND_CONDITIONS=()
+                for ext in "${VIDEO_EXTENSIONS[@]}"; do
+                    if [[ "${ext,,}" != "mp4" ]]; then
+                        FIND_CONDITIONS+=("-iname" "*.${ext}")
+                        FIND_CONDITIONS+=("-o")
+                    fi
+                done
+                # 去掉最后的 -o
+                unset 'FIND_CONDITIONS[-1]'
+
+                # 执行 find 命令并读取结果
+                while IFS= read -r -d '' file; do
+                    if is_video_file "$file"; then
+                        echo "转换视频文件: $file"
+                        convert_to_mp4 "$file"
+                    else
+                        echo "跳过非视频文件: $file"
+                    fi
+                done < <(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
+                echo "所有视频文件转换完成。"
+            elif [ -f "$path" ]; then
+                if is_video_file "$path"; then
+                    convert_to_mp4 "$path"
+                else
+                    echo "错误: 文件 '$path' 不是支持的视频格式。"
+                    exit 1
+                fi
+            else
+                echo "错误: '$path' 既不是文件也不是目录。"
+                exit 1
+            fi
+        }
+
+        convert_input "$INPUT_PATH"
+        ;;
+    *)
+        echo "错误: 未知命令 '$COMMAND'。"
+        show_usage
+        exit 1
+        ;;
+esac
