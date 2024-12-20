@@ -24,6 +24,7 @@ FRAME_HEADER = b''  # 帧头(STM32)可为空
 FRAME_FOOTER = b''  # 帧尾(STM32)可为空
 #SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
 SCREEN_END = bytes.fromhex('ff ff ff')
+FULL_SIGNAL = "123"  # 添加这行，定义满载信号
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
@@ -113,6 +114,9 @@ class SerialManager:
                                 hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
                                 print(f"接收到的原始数据: {hex_data}")
                                 print(f"解码后的数据: {decoded_data}")
+                                if decoded_data == FULL_SIGNAL:
+                                    print("检测到满载信号")
+                                    self.send_to_screen_component("文本组件", "FULL")  # 发送到串口屏的第一行第一列
                         except UnicodeDecodeError as e:
                             hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
                             print(f"数据解码错误: {str(e)}")
@@ -213,7 +217,7 @@ class SerialManager:
     def init_screen_table(self):
         """初始化串口屏表格"""
         # 清空所有文本框
-        for i in range(0, 10):  # 10行
+        for i in range(0, 11):  # 11行
             for j in range(0, 4):  # 4列
                 self.send_to_screen_component(f"x{i}y{j}", "")
     
@@ -234,8 +238,8 @@ class SerialManager:
 
     def update_screen_table(self):
         """更新串口屏表格显示"""
-        # 确保只显示最近的8条记录
-        recent_items = self.detected_items[-8:]
+        # 确保只显示最近的11条记录
+        recent_items = self.detected_items[-11:]
         
         # 先清空所有单元格
         self.init_screen_table()
@@ -302,10 +306,10 @@ class WasteClassifier:
         
         # 分类名称对应的描述(可选)
         self.category_descriptions = {
-            0: "果蔬垃圾",
-            1: "可回收利用的垃圾",
-            2: "对人体健康或环境有害的垃圾",
-            3: "其他未分类的垃圾"
+            0: "厨余垃圾",
+            1: "可回收利用垃圾",
+            2: "有害垃圾",
+            3: "其他垃圾"
         }
 
     def get_category_info(self, class_id):
