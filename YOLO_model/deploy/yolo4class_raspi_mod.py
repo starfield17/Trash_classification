@@ -24,7 +24,7 @@ FRAME_HEADER = b''  # 帧头(STM32)可为空
 FRAME_FOOTER = b''  # 帧尾(STM32)可为空
 #SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
 SCREEN_END = bytes.fromhex('ff ff ff')
-FULL_SIGNAL = "123"  # 添加这行，定义满载信号
+FULL_SIGNAL = "123"  # 定义满载信号
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
