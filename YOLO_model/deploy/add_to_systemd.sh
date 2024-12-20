@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# add_to_systemd.sh
+# inits_crpt.sh
 # 用法:
-#   安装服务: bash add_to_systemd.sh install "conda_env_name" "/path/to/script.py"
-#   移除服务: bash add_to_systemd.sh remove "/path/to/script.py"
+#   安装服务: bash inits_crpt.sh install "conda_env_name" "/path/to/script.py"
+#   移除服务: bash inits_crpt.sh remove "/path/to/script.py"
 
 echo "==============================="
-echo "初始化启动脚本: add_to_systemd.sh"
+echo "初始化启动脚本: inits_crpt.sh"
 echo "==============================="
 
 # 检查是否至少有一个参数
@@ -30,6 +30,9 @@ install_service() {
 
     CONDA_ENV=$2
     SCRIPT_PATH=$3
+
+    # 转换为绝对路径
+    SCRIPT_PATH=$(realpath "$SCRIPT_PATH")
 
     echo "Conda 环境: ${CONDA_ENV:-'系统默认 Python 环境'}"
     echo "Python 脚本路径: $SCRIPT_PATH"
@@ -57,6 +60,13 @@ install_service() {
         echo "警告: 服务 '$SERVICE_NAME' 已存在。准备覆盖该服务。"
     fi
 
+    # 创建 ExecStart 命令
+    if [ -n "$CONDA_ENV" ]; then
+        EXEC_START_CMD="/bin/bash -c 'echo \"激活 Conda 环境: $CONDA_ENV\"; CONDA_BASE=\$(conda info --base 2>/dev/null); if [ -z \"\$CONDA_BASE\" ]; then echo \"错误: Conda 未安装或未在 PATH 中找到。\"; exit 1; fi; source \"\$CONDA_BASE/etc/profile.d/conda.sh\"; conda activate \"$CONDA_ENV\"; if [ \"\$?\" -ne 0 ]; then echo \"错误: 无法激活 Conda 环境 '$CONDA_ENV'。\"; exit 1; fi; echo \"开始执行 Python 脚本: $SCRIPT_PATH\"; python \"$SCRIPT_PATH\"'"
+    else
+        EXEC_START_CMD="/bin/bash -c 'echo \"使用系统默认的 Python 环境.\"; echo \"开始执行 Python 脚本: $SCRIPT_PATH\"; python \"$SCRIPT_PATH\"'"
+    fi
+
     # 创建 systemd 服务文件内容
     SERVICE_FILE="[Unit]
 Description=Auto-start $SERVICE_NAME
@@ -67,28 +77,7 @@ Type=simple
 User=$USER_NAME
 Environment=PATH=/usr/bin:/bin:/usr/local/bin
 WorkingDirectory=$(dirname "$SCRIPT_PATH")
-ExecStart=/bin/bash -c '
-if [ -n \"$CONDA_ENV\" ]; then
-    echo \"激活 Conda 环境: $CONDA_ENV\"
-    # 查找conda的安装路径
-    CONDA_BASE=\$(conda info --base 2>/dev/null)
-    if [ -z \"\$CONDA_BASE\" ]; then
-        echo \"错误: Conda 未安装或未在 PATH 中找到。\"
-        exit 1
-    fi
-    source \"\$CONDA_BASE/etc/profile.d/conda.sh\"
-    conda activate \"$CONDA_ENV\"
-    if [ \"\$?\" -ne 0 ]; then
-        echo \"错误: 无法激活 Conda 环境 '$CONDA_ENV'。\"
-        exit 1
-    fi
-else
-    echo \"使用系统默认的 Python 环境。\"
-fi
-
-echo \"开始执行 Python 脚本: $SCRIPT_PATH\"
-python \"$SCRIPT_PATH\"
-'
+ExecStart=$EXEC_START_CMD
 
 Restart=on-failure
 RestartSec=5
@@ -156,13 +145,10 @@ remove_service() {
 
     SCRIPT_PATH=$2
 
-    echo "Python 脚本路径: $SCRIPT_PATH"
+    # 转换为绝对路径
+    SCRIPT_PATH=$(realpath "$SCRIPT_PATH")
 
-    # 检查脚本是否存在
-    if [ ! -f "$SCRIPT_PATH" ]; then
-        echo "错误: 脚本文件 '$SCRIPT_PATH' 不存在。"
-        # 继续尝试移除服务文件，即使脚本不存在
-    fi
+    echo "Python 脚本路径: $SCRIPT_PATH"
 
     # 定义服务名称
     SERVICE_NAME=$(basename "$SCRIPT_PATH" .py).service
