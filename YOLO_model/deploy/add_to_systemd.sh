@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# init_systemd.sh
+# add_to_systemd.sh
 # 用法:
-#   安装服务: bash init_systemd.sh install "conda_env_name" "/path/to/script.py"
-#   移除服务: bash init_systemd.sh remove "/path/to/script.py"
+#   安装服务: bash add_to_systemd.sh install "conda_env_name" "/path/to/script.py"
+#   移除服务: bash add_to_systemd.sh remove "/path/to/script.py"
 
 echo "==============================="
-echo "初始化启动脚本: init_systemd.sh"
+echo "初始化启动脚本: add_to_systemd.sh"
 echo "==============================="
 
 # 检查是否至少有一个参数
