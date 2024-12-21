@@ -79,6 +79,45 @@ convert_to_mp4() {
     fi
 }
 
+# 函数：将多个视频文件合并为一个 MP4 视频
+merge_videos_in_directory() {
+    local DIRECTORY="$1"
+    local MERGED_VIDEO_PATH="$DIRECTORY/merged_output.mp4"
+
+    # 查找目录中的视频文件，并按名称排序
+    mapfile -t VIDEO_FILES < <(find "$DIRECTORY" -maxdepth 1 -type f \( $(printf -- "-iname *.%s -o " "${VIDEO_EXTENSIONS[@]}") -false \) | sort)
+
+    # 过滤出支持的视频文件
+    VIDEO_FILES=($(printf "%s\n" "${VIDEO_FILES[@]}" | grep -Ei "\.($(printf '|%s' "${VIDEO_EXTENSIONS[@]}"))$"))
+
+    local VIDEO_COUNT=${#VIDEO_FILES[@]}
+
+    if [ "$VIDEO_COUNT" -lt 2 ]; then
+        echo "在目录 '$DIRECTORY' 中的视频文件少于2个，跳过合并。"
+        return
+    fi
+
+    # 创建临时文件列表
+    local TEMP_FILE_LIST="$DIRECTORY/file_list.txt"
+    > "$TEMP_FILE_LIST"
+    for video in "${VIDEO_FILES[@]}"; do
+        # 使用绝对路径并处理空格
+        echo "file '$(realpath "$video")'" >> "$TEMP_FILE_LIST"
+    done
+
+    # 使用 ffmpeg 的 concat demuxer 进行合并
+    ffmpeg -f concat -safe 0 -i "$TEMP_FILE_LIST" -c copy "$MERGED_VIDEO_PATH" >/dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "已合并目录 '$DIRECTORY' 中的 $VIDEO_COUNT 个视频为 '$MERGED_VIDEO_PATH'"
+    else
+        echo "合并目录 '$DIRECTORY' 中的视频失败。"
+    fi
+
+    # 删除临时文件列表
+    rm -f "$TEMP_FILE_LIST"
+}
+
 # 显示使用指南
 show_usage() {
     echo "=============================================="
@@ -87,8 +126,9 @@ show_usage() {
     echo "用法: $0 <command> /path/to/video_or_directory"
     echo ""
     echo "命令说明:"
-    echo "  getframe    提取视频帧"
-    echo "  getmp4      将非 MP4 视频转换为 MP4 格式"
+    echo "  getframe      提取视频帧"
+    echo "  getmp4        将非 MP4 视频转换为 MP4 格式"
+    echo "  mergevideo    合并目录中的视频文件（递归处理每个子目录）"
     echo ""
     echo "参数说明:"
     echo "  /path/to/video_or_directory  指定单个视频文件或包含视频文件的目录。"
@@ -202,6 +242,31 @@ case "$COMMAND" in
         }
 
         convert_input "$INPUT_PATH"
+        ;;
+    mergevideo)
+        # 合并视频文件功能
+        mergevideo_input() {
+            local path="$1"
+            if [ -d "$path" ]; then
+                echo "检测到目录: $path"
+                echo "开始递归合并目录中的视频文件..."
+
+                # 使用 find 递归遍历所有子目录
+                find "$path" -type d | while IFS= read -r dir; do
+                    echo "处理目录: $dir"
+                    merge_videos_in_directory "$dir"
+                done
+                echo "所有目录中的视频文件合并完成。"
+            elif [ -f "$path" ]; then
+                echo "错误: 'mergevideo' 命令需要一个目录作为输入。"
+                exit 1
+            else
+                echo "错误: '$path' 既不是文件也不是目录。"
+                exit 1
+            fi
+        }
+
+        mergevideo_input "$INPUT_PATH"
         ;;
     *)
         echo "错误: 未知命令 '$COMMAND'。"
