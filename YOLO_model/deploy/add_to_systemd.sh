@@ -60,9 +60,18 @@ install_service() {
         echo "警告: 服务 '$SERVICE_NAME' 已存在。准备覆盖该服务。"
     fi
 
+    # 获取 Conda 的安装路径
+    CONDA_BASE=$(conda info --base 2>/dev/null)
+    if [ -z "$CONDA_BASE" ]; then
+        echo "错误: Conda 未安装或未在 PATH 中找到。"
+        exit 1
+    fi
+
+    echo "Conda 基础路径: $CONDA_BASE"
+
     # 创建 ExecStart 命令
     if [ -n "$CONDA_ENV" ]; then
-        EXEC_START_CMD="/bin/bash -c 'echo \"激活 Conda 环境: $CONDA_ENV\"; CONDA_BASE=\$(conda info --base 2>/dev/null); if [ -z \"\$CONDA_BASE\" ]; then echo \"错误: Conda 未安装或未在 PATH 中找到。\"; exit 1; fi; source \"\$CONDA_BASE/etc/profile.d/conda.sh\"; conda activate \"$CONDA_ENV\"; if [ \"\$?\" -ne 0 ]; then echo \"错误: 无法激活 Conda 环境 '$CONDA_ENV'。\"; exit 1; fi; echo \"开始执行 Python 脚本: $SCRIPT_PATH\"; python \"$SCRIPT_PATH\"'"
+        EXEC_START_CMD="/bin/bash -c 'echo \"激活 Conda 环境: $CONDA_ENV\"; source \"$CONDA_BASE/etc/profile.d/conda.sh\"; conda activate \"$CONDA_ENV\"; if [ \"\$?\" -ne 0 ]; then echo \"错误: 无法激活 Conda 环境 '$CONDA_ENV'。\"; exit 1; fi; echo \"开始执行 Python 脚本: $SCRIPT_PATH\"; python \"$SCRIPT_PATH\"'"
     else
         EXEC_START_CMD="/bin/bash -c 'echo \"使用系统默认的 Python 环境.\"; echo \"开始执行 Python 脚本: $SCRIPT_PATH\"; python \"$SCRIPT_PATH\"'"
     fi
@@ -75,7 +84,7 @@ After=network.target
 [Service]
 Type=simple
 User=$USER_NAME
-Environment=PATH=/usr/bin:/bin:/usr/local/bin
+Environment=PATH=$CONDA_BASE/bin:/usr/bin:/bin:/usr/local/bin
 WorkingDirectory=$(dirname "$SCRIPT_PATH")
 ExecStart=$EXEC_START_CMD
 
