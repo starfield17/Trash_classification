@@ -7,12 +7,13 @@ import threading
 import time
 import subprocess
 import sys
-
+import logging
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
-
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 # 串口配置
 STM32_PORT = '/dev/ttyAMA2'  # STM32串口(TX-> GPIO0,RX->GPIO1)
 STM32_BAUD = 115200
@@ -30,174 +31,231 @@ def setup_gpu():
     return True, f"已启用GPU: {device_name}"
 
 class SerialManager:
-    def __init__(self):
+    def __init__(self,
+                 port=STM32_PORT,
+                 baudrate=STM32_BAUD,
+                 timeout=0.1,
+                 write_timeout=0.1,
+                 frame_header=b'\xAA\xBB',
+                 frame_footer=b'\xCC\xDD',
+                 full_signal="123",
+                 min_send_interval=0.1):
+        """
+        初始化串口管理器。
+
+        Args:
+            port (str): 串口端口名称。
+            baudrate (int): 波特率。
+            timeout (float): 读取超时时间（秒）。
+            write_timeout (float): 写入超时时间（秒）。
+            frame_header (bytes): 帧头。
+            frame_footer (bytes): 帧尾。
+            full_signal (str): 满载信号。
+            min_send_interval (float): 最小发送间隔（秒）。
+        """
+        self.port = port
+        self.baudrate = baudrate
+        self.timeout = timeout
+        self.write_timeout = write_timeout
+        self.frame_header = frame_header
+        self.frame_footer = frame_footer
+        self.full_signal = full_signal
+        self.min_send_interval = min_send_interval
+
         self.stm32_port = None
         self.is_running = True
         self.last_stm32_send_time = 0
-        self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
 
-        # 初始化STM32串口
-        if ENABLE_SERIAL:
-            try:
-                self.stm32_port = serial.Serial(
-                    STM32_PORT, 
-                    STM32_BAUD, 
-                    timeout=0.1,
-                    write_timeout=0.1
-                )
-                print(f"STM32串口已初始化: {STM32_PORT}")
-            except Exception as e:
-                print(f"STM32串口初始化失败: {str(e)}")
-                self.stm32_port = None
+        self.receive_buffer = bytearray()
+        self.lock = threading.Lock()
 
-        # 启动数据接收线程
-        if self.stm32_port:
-            self.receive_thread = threading.Thread(target=self.receive_stm32_data)
-            self.receive_thread.daemon = True
+        self.setup_serial()
+        self.start_receive_thread()
+
+    def setup_serial(self):
+        """初始化串口连接。"""
+        try:
+            self.stm32_port = serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,
+                timeout=self.timeout,
+                write_timeout=self.write_timeout
+            )
+            logging.info(f"串口已初始化: {self.port} @ {self.baudrate}波特率")
+        except serial.SerialException as e:
+            logging.error(f"串口初始化失败: {e}")
+            self.stm32_port = None
+
+    def start_receive_thread(self):
+        """启动接收线程。"""
+        if self.stm32_port and self.stm32_port.is_open:
+            self.receive_thread = threading.Thread(target=self.receive_stm32_data, daemon=True)
             self.receive_thread.start()
+            logging.info("串口接收线程已启动")
+        else:
+            logging.warning("串口未打开，无法启动接收线程")
+
+    def stop(self):
+        """停止接收线程并关闭串口。"""
+        self.is_running = False
+        if self.receive_thread.is_alive():
+            self.receive_thread.join()
+            logging.info("串口接收线程已停止")
+        if self.stm32_port and self.stm32_port.is_open:
+            try:
+                self.stm32_port.close()
+                logging.info("串口已关闭")
+            except serial.SerialException as e:
+                logging.error(f"关闭串口失败: {e}")
+
+    def calculate_checksum(self, data):
+        """
+        计算简单的校验和。
+
+        Args:
+            data (bytes): 数据字节。
+
+        Returns:
+            int: 校验和。
+        """
+        return sum(data) & 0xFF
 
     def receive_stm32_data(self):
-        """接收STM32数据的线程函数，基于帧结构和校验和"""
-        buffer = bytearray()
+        """接收STM32数据的线程函数，基于帧结构和校验和。"""
         while self.is_running and self.stm32_port and self.stm32_port.is_open:
             try:
                 if self.stm32_port.in_waiting > 0:
                     data = self.stm32_port.read(self.stm32_port.in_waiting)
-                    buffer.extend(data)
-                    
-                    # 查找帧头
-                    header_index = buffer.find(FRAME_HEADER)
-                    if header_index != -1:
-                        # 查找帧尾
-                        footer_index = buffer.find(FRAME_FOOTER, header_index)
-                        if footer_index != -1:
+                    with self.lock:
+                        self.receive_buffer.extend(data)
+                        logging.debug(f"接收到的数据: {data.hex()}")
+
+                        while True:
+                            header_index = self.receive_buffer.find(self.frame_header)
+                            if header_index == -1:
+                                # 未找到帧头，清空缓冲区
+                                self.receive_buffer.clear()
+                                break
+                            
+                            if len(self.receive_buffer) < header_index + len(self.frame_header) + 2:
+                                # 数据不足以包含最小帧（数据字节 + 校验和 + 帧尾）
+                                break
+
+                            footer_index = self.receive_buffer.find(self.frame_footer, header_index + len(self.frame_header))
+                            if footer_index == -1:
+                                # 未找到帧尾，等待更多数据
+                                break
+
                             # 提取完整帧
-                            frame = buffer[header_index + len(FRAME_HEADER):footer_index]
-                            buffer = buffer[footer_index + len(FRAME_FOOTER):]  # 清除已处理的数据
-                            
-                            # 检查帧长度（数据 + 校验和）
+                            frame = self.receive_buffer[header_index + len(self.frame_header):footer_index]
+                            self.receive_buffer = self.receive_buffer[footer_index + len(self.frame_footer):]
+
                             if len(frame) < 2:
-                                print("帧长度不足，忽略")
+                                logging.warning("接收到的帧长度不足，忽略")
                                 continue
-                            
+
                             data_byte = frame[0]
                             checksum = frame[1]
-                            
-                            if data_byte == checksum:
-                                try:
-                                    decoded_data = frame[0:1].decode('utf-8', errors='replace').strip()
-                                    if any(c not in ['\x00', '\xff'] for c in decoded_data):
-                                        print(f"接收到的原始数据: {' '.join(f'0x{byte:02X}' for byte in frame)}")
-                                        print(f"解码后的数据: {decoded_data}")
-                                        if decoded_data == FULL_SIGNAL:
-                                            print("检测到满载信号")
-                                except UnicodeDecodeError as e:
-                                    print(f"数据解码错误: {str(e)}")
-                                    print(f"原始数据: {' '.join(f'0x{byte:02X}' for byte in frame)}")
-                            else:
-                                print("校验和错误，数据可能损坏")
-                
+
+                            calculated_checksum = self.calculate_checksum(frame[:-1])
+                            if checksum != calculated_checksum:
+                                logging.warning("校验和错误，数据可能损坏")
+                                logging.debug(f"接收到的校验和: {checksum}, 计算得到的校验和: {calculated_checksum}")
+                                continue
+
+                            try:
+                                decoded_data = frame[:-1].decode('utf-8', errors='replace').strip()
+                                logging.info(f"解码后的数据: {decoded_data}")
+                                if decoded_data == self.full_signal:
+                                    logging.info("检测到满载信号")
+                            except UnicodeDecodeError as e:
+                                logging.error(f"数据解码错误: {e}")
+                                logging.debug(f"原始数据: {frame[:-1].hex()}")
+
                 time.sleep(0.01)
+
             except serial.SerialException as e:
-                print(f"串口通信错误: {str(e)}")
-                # 尝试重新打开串口
-                try:
-                    if self.stm32_port.is_open:
-                        self.stm32_port.close()
-                    time.sleep(1)  # 等待一秒后重试
-                    self.stm32_port.open()
-                    print("串口重新打开成功")
-                except Exception as reopen_error:
-                    print(f"串口重新打开失败: {str(reopen_error)}")
-                    break  # 如果重新打开失败，退出循环
-                    
+                logging.error(f"串口通信错误: {e}")
+                self.handle_serial_exception()
             except Exception as e:
-                print(f"其他错误: {str(e)}")
-                print(f"错误类型: {type(e).__name__}")
-                    
-        print("串口接收线程终止")
+                logging.error(f"其他错误: {e}")
+                logging.debug(f"错误类型: {type(e).__name__}")
+
+        logging.info("串口接收线程终止")
+
+    def handle_serial_exception(self):
+        """处理串口通信错误，尝试重新连接。"""
+        try:
+            if self.stm32_port.is_open:
+                self.stm32_port.close()
+                logging.info("串口已关闭，准备重新打开")
+            time.sleep(1)  # 等待一秒后重试
+            self.stm32_port.open()
+            logging.info("串口重新打开成功")
+        except serial.SerialException as reopen_error:
+            logging.error(f"串口重新打开失败: {reopen_error}")
+            self.is_running = False  # 无法重新打开，停止线程
 
     def send_to_stm32(self, class_id, max_retries=3, retry_delay=0.1):
         """
-        发送数据到STM32，带有重试机制和更好的错误处理
+        发送数据到STM32，带有重试机制和更好的错误处理。
+
         Args:
-            class_id: 要发送的分类ID
-            max_retries: 最大重试次数
-            retry_delay: 重试间隔时间(秒)
+            class_id (int): 要发送的分类ID。
+            max_retries (int): 最大重试次数。
+            retry_delay (float): 重试间隔时间（秒）。
+
+        Returns:
+            bool: 发送是否成功。
         """
         if not self.stm32_port or not self.stm32_port.is_open:
-            print("串口未开启或未连接")
+            logging.error("串口未开启或未连接")
             return False
 
-        # 检查发送间隔
         current_time = time.time()
-        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+        if current_time - self.last_stm32_send_time < self.min_send_interval:
+            logging.debug("发送间隔过短，跳过发送")
             return False
 
-        # 数据验证
         try:
             class_id = int(class_id)
-            if not 0 <= class_id <= 3:  # 确保class_id在有效范围内
-                print(f"无效的分类ID: {class_id}")
+            if not 0 <= class_id <= 255:
+                logging.error(f"无效的分类ID: {class_id}")
                 return False
         except (ValueError, TypeError):
-            print(f"分类ID格式错误: {class_id}")
+            logging.error(f"分类ID格式错误: {class_id}")
             return False
 
-        # 准备发送数据，包含帧头、数据和帧尾
-        checksum = class_id.to_bytes(1, 'little')  # 简单校验和
-        data = FRAME_HEADER + checksum + FRAME_FOOTER
+        # 准备发送数据，包含帧头、数据、校验和和帧尾
+        data_byte = class_id.to_bytes(1, 'little')
+        checksum = self.calculate_checksum(data_byte)
+        data = self.frame_header + data_byte + bytes([checksum]) + self.frame_footer
 
-        # 重试循环
-        for attempt in range(max_retries):
+        for attempt in range(1, max_retries + 1):
             try:
-                # 检查串口状态
-                if not self.stm32_port.is_open:
-                    print("串口已关闭，尝试重新打开")
-                    self.stm32_port.open()
-                    
-                # 只在第一次尝试时重置输出缓冲区
-                if attempt == 0:
-                    self.stm32_port.reset_output_buffer()
+                with self.lock:
+                    bytes_written = self.stm32_port.write(data)
+                    self.stm32_port.flush()
+                    logging.debug(f"发送的数据: {data.hex()}, 字节数: {bytes_written}")
 
-                # 发送数据
-                bytes_written = self.stm32_port.write(data)
-                self.stm32_port.flush()
-                
-                # 验证发送的数据长度
                 if bytes_written != len(data):
                     raise serial.SerialException(f"数据发送不完整: {bytes_written}/{len(data)} 字节")
-                
+
                 self.last_stm32_send_time = current_time
-                print(f"发送数据成功: {data}, 字节数: {bytes_written}")
+                logging.info(f"发送数据成功: {data.hex()}, 字节数: {bytes_written}")
                 return True
-                
+
             except serial.SerialException as e:
-                print(f"串口发送错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
-                try:
-                    self.stm32_port.close()
-                    time.sleep(retry_delay)
-                    self.stm32_port.open()
-                except Exception as reopen_error:
-                    print(f"串口重新打开失败: {str(reopen_error)}")
-                    continue
-                    
-            except Exception as e:
-                print(f"其他错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                logging.error(f"串口发送错误 (尝试 {attempt}/{max_retries}): {e}")
+                self.handle_serial_exception()
                 time.sleep(retry_delay)
-                
-        print("发送数据失败，已达到最大重试次数")
+            except Exception as e:
+                logging.error(f"其他错误 (尝试 {attempt}/{max_retries}): {e}")
+                time.sleep(retry_delay)
+
+        logging.error("发送数据失败，已达到最大重试次数")
         return False
 
-    def cleanup(self):
-        """清理串口资源"""
-        self.is_running = False
-        if self.stm32_port and self.stm32_port.is_open:
-            try:
-                self.stm32_port.close()
-                print("串口已关闭")
-            except Exception as e:
-                print(f"关闭串口时发生错误: {str(e)}")
 class WasteClassifier:
     def __init__(self):
         # 分类名称
@@ -360,8 +418,7 @@ def main():
         print("\n检测到键盘中断,程序退出")
     finally:
         # 清理资源
-        if hasattr(detector, 'serial_manager'):
-            detector.serial_manager.cleanup()
+        detector.serial_manager.stop()
         cap.release()
         if DEBUG_WINDOW:
             cv2.destroyAllWindows()
