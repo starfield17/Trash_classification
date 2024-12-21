@@ -107,84 +107,87 @@ class SerialManager:
                     
         print("串口接收线程终止")
 
-def send_to_stm32(self, class_id, max_retries=3, retry_delay=0.1):
-    """
-    发送数据到STM32，带有重试机制和更好的错误处理
-    
-    Args:
-        class_id: 要发送的分类ID
-        max_retries: 最大重试次数
-        retry_delay: 重试间隔时间(秒)
-    """
-    if not self.stm32_port or not self.stm32_port.is_open:
-        print("串口未开启或未连接")
-        return False
-
-    # 检查发送间隔
-    current_time = time.time()
-    if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
-        return False
-
-    # 数据验证
-    try:
-        class_id = int(class_id)
-        if not 0 <= class_id <= 3:  # 确保class_id在有效范围内
-            print(f"无效的分类ID: {class_id}")
+    def send_to_stm32(self, class_id, max_retries=3, retry_delay=0.1):
+        """
+        发送数据到STM32，带有重试机制和更好的错误处理
+        
+        Args:
+            class_id: 要发送的分类ID
+            max_retries: 最大重试次数
+            retry_delay: 重试间隔时间(秒)
+        """
+        if not self.stm32_port or not self.stm32_port.is_open:
+            print("串口未开启或未连接")
             return False
-    except (ValueError, TypeError):
-        print(f"分类ID格式错误: {class_id}")
-        return False
 
-    # 准备发送数据
-    data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
-    
-    # 重试循环
-    for attempt in range(max_retries):
+        # 检查发送间隔
+        current_time = time.time()
+        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+            return False
+
+        # 数据验证
         try:
-            # 检查串口状态
-            if not self.stm32_port.is_open:
-                print("串口已关闭，尝试重新打开")
-                self.stm32_port.open()
-                
-            # 只在第一次尝试时重置输出缓冲区
-            if attempt == 0:
-                self.stm32_port.reset_output_buffer()
+            class_id = int(class_id)
+            if not 0 <= class_id <= 3:  # 确保class_id在有效范围内
+                print(f"无效的分类ID: {class_id}")
+                return False
+        except (ValueError, TypeError):
+            print(f"分类ID格式错误: {class_id}")
+            return False
 
-            # 发送数据
-            bytes_written = self.stm32_port.write(data)
-            self.stm32_port.flush()
-            
-            # 验证发送的数据长度
-            if bytes_written != len(data):
-                raise serial.SerialException(f"数据发送不完整: {bytes_written}/{len(data)} 字节")
-            
-            self.last_stm32_send_time = current_time
-            print(f"发送数据成功: {data}, 字节数: {bytes_written}")
-            return True
-            
-        except serial.SerialException as e:
-            print(f"串口发送错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+        # 准备发送数据
+        data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
+        
+        # 重试循环
+        for attempt in range(max_retries):
             try:
-                self.stm32_port.close()
-                time.sleep(retry_delay)
-                self.stm32_port.open()
-            except Exception as reopen_error:
-                print(f"串口重新打开失败: {str(reopen_error)}")
-                continue
+                # 检查串口状态
+                if not self.stm32_port.is_open:
+                    print("串口已关闭，尝试重新打开")
+                    self.stm32_port.open()
+                    
+                # 只在第一次尝试时重置输出缓冲区
+                if attempt == 0:
+                    self.stm32_port.reset_output_buffer()
+
+                # 发送数据
+                bytes_written = self.stm32_port.write(data)
+                self.stm32_port.flush()
                 
-        except Exception as e:
-            print(f"其他错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
-            time.sleep(retry_delay)
-            
-    print("发送数据失败，已达到最大重试次数")
-    return False
+                # 验证发送的数据长度
+                if bytes_written != len(data):
+                    raise serial.SerialException(f"数据发送不完整: {bytes_written}/{len(data)} 字节")
+                
+                self.last_stm32_send_time = current_time
+                print(f"发送数据成功: {data}, 字节数: {bytes_written}")
+                return True
+                
+            except serial.SerialException as e:
+                print(f"串口发送错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                try:
+                    self.stm32_port.close()
+                    time.sleep(retry_delay)
+                    self.stm32_port.open()
+                except Exception as reopen_error:
+                    print(f"串口重新打开失败: {str(reopen_error)}")
+                    continue
+                    
+            except Exception as e:
+                print(f"其他错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                time.sleep(retry_delay)
+                
+        print("发送数据失败，已达到最大重试次数")
+        return False
 
     def cleanup(self):
         """清理串口资源"""
         self.is_running = False
         if self.stm32_port and self.stm32_port.is_open:
-            self.stm32_port.close()
-            
+            try:
+                self.stm32_port.close()
+                print("串口已关闭")
+            except Exception as e:
+                print(f"关闭串口时发生错误: {str(e)}")
 class WasteClassifier:
     def __init__(self):
         # 分类名称
