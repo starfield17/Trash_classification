@@ -14,7 +14,7 @@ ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
 
 # 串口配置
-STM32_PORT = '/dev/ttyS0'  # STM32串口(TX-> GPIO14,RX->GPIO15)
+STM32_PORT = '/dev/ttyAMA2'  # STM32串口(TX-> GPIO0,RX->GPIO1)
 STM32_BAUD = 115200
 
 # 串口通信协议
@@ -57,37 +57,47 @@ class SerialManager:
             self.receive_thread.start()
 
     def receive_stm32_data(self):
-        """接收STM32数据的线程函数"""
-        buffer_size = 10240  # 设置合理的缓冲区大小
-        
+        """接收STM32数据的线程函数，基于帧结构和校验和"""
+        buffer = bytearray()
         while self.is_running and self.stm32_port and self.stm32_port.is_open:
             try:
-                # 检查串口是否有数据可读
                 if self.stm32_port.in_waiting > 0:
-                    # 读取数据，限制读取大小
-                    data = self.stm32_port.read(min(self.stm32_port.in_waiting, buffer_size))
+                    data = self.stm32_port.read(self.stm32_port.in_waiting)
+                    buffer.extend(data)
                     
-                    if data:
-                        try:
-                            # 尝试解码数据（去除无效字符）
-                            decoded_data = data.decode('utf-8', errors='replace').strip()
-                            # 过滤掉全是 null 字符或 0xFF 的数据
-                            if any(c not in ['\x00', '\xff'] for c in decoded_data):
-                                # 将数据转换为十六进制字符串
-                                hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
-                                print(f"接收到的原始数据: {hex_data}")
-                                print(f"解码后的数据: {decoded_data}")
-                                if decoded_data == FULL_SIGNAL:
-                                    print("检测到满载信号")
-                        except UnicodeDecodeError as e:
-                            hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
-                            print(f"数据解码错误: {str(e)}")
-                            print(f"原始数据: {hex_data}")
-                    
-                    # 清理缓冲区
-                    self.stm32_port.reset_input_buffer()
-                time.sleep(0.01)
+                    # 查找帧头
+                    header_index = buffer.find(FRAME_HEADER)
+                    if header_index != -1:
+                        # 查找帧尾
+                        footer_index = buffer.find(FRAME_FOOTER, header_index)
+                        if footer_index != -1:
+                            # 提取完整帧
+                            frame = buffer[header_index + len(FRAME_HEADER):footer_index]
+                            buffer = buffer[footer_index + len(FRAME_FOOTER):]  # 清除已处理的数据
+                            
+                            # 检查帧长度（数据 + 校验和）
+                            if len(frame) < 2:
+                                print("帧长度不足，忽略")
+                                continue
+                            
+                            data_byte = frame[0]
+                            checksum = frame[1]
+                            
+                            if data_byte == checksum:
+                                try:
+                                    decoded_data = frame[0:1].decode('utf-8', errors='replace').strip()
+                                    if any(c not in ['\x00', '\xff'] for c in decoded_data):
+                                        print(f"接收到的原始数据: {' '.join(f'0x{byte:02X}' for byte in frame)}")
+                                        print(f"解码后的数据: {decoded_data}")
+                                        if decoded_data == FULL_SIGNAL:
+                                            print("检测到满载信号")
+                                except UnicodeDecodeError as e:
+                                    print(f"数据解码错误: {str(e)}")
+                                    print(f"原始数据: {' '.join(f'0x{byte:02X}' for byte in frame)}")
+                            else:
+                                print("校验和错误，数据可能损坏")
                 
+                time.sleep(0.01)
             except serial.SerialException as e:
                 print(f"串口通信错误: {str(e)}")
                 # 尝试重新打开串口
@@ -110,7 +120,6 @@ class SerialManager:
     def send_to_stm32(self, class_id, max_retries=3, retry_delay=0.1):
         """
         发送数据到STM32，带有重试机制和更好的错误处理
-        
         Args:
             class_id: 要发送的分类ID
             max_retries: 最大重试次数
@@ -135,9 +144,10 @@ class SerialManager:
             print(f"分类ID格式错误: {class_id}")
             return False
 
-        # 准备发送数据
-        data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
-        
+        # 准备发送数据，包含帧头、数据和帧尾
+        checksum = class_id.to_bytes(1, 'little')  # 简单校验和
+        data = FRAME_HEADER + checksum + FRAME_FOOTER
+
         # 重试循环
         for attempt in range(max_retries):
             try:
