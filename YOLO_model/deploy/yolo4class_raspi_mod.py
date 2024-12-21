@@ -372,8 +372,8 @@ class YOLODetector:
                 class_id = int(box.cls[0].item())
                 
                 waste_classifier = WasteClassifier()
-                specific_name, category_id, category_name = waste_classifier.get_category_info(class_id)
-                display_text = f"{specific_name}({category_name})"
+                category_id, description = waste_classifier.get_category_info(class_id)
+                display_text = f"{category_id}({description})"
                 
                 color = self.colors.get(class_id, (255, 255, 255))
                 
@@ -392,8 +392,8 @@ class YOLODetector:
                 print(f"边界框位置: ({x1}, {y1}), ({x2}, {y2})")
                 print(f"中心点位置: ({center_x}, {center_y})")
                 print("-" * 30)
-                #self.serial_manager.send_to_stm32(class_id)
-                self.serial_manager.send_to_stm32(category_id)
+                self.serial_manager.send_to_stm32(class_id)
+                #self.serial_manager.send_to_stm32(category_id)
                 self.serial_manager.send_to_screen(display_text)
         
         return frame
