@@ -16,15 +16,12 @@ CONF_THRESHOLD = 0.9  # 置信度阈值
 # 串口配置
 STM32_PORT = '/dev/ttyS0'  # STM32串口(TX-> GPIO14,RX->GPIO15)
 STM32_BAUD = 115200
-SCREEN_PORT = '/dev/ttyAMA2'  # 串口屏串口(TX-GPIO0> ,RX->GPIO1)
-SCREEN_BAUD = 9600
 
 # 串口通信协议
 FRAME_HEADER = b''  # 帧头(STM32)可为空
 FRAME_FOOTER = b''  # 帧尾(STM32)可为空
-#SCREEN_END = b'\xff\xff\xff'  # 串口屏结束符
-SCREEN_END = bytes.fromhex('ff ff ff')
 FULL_SIGNAL = "123"  # 定义满载信号
+
 def setup_gpu():
     if not torch.cuda.is_available():
         return False, "未检测到GPU，将使用CPU进行推理"
@@ -35,10 +32,8 @@ def setup_gpu():
 class SerialManager:
     def __init__(self):
         self.stm32_port = None
-        self.screen_port = None
         self.is_running = True
         self.last_stm32_send_time = 0
-        self.last_screen_send_time = 0
         self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
         
         # 垃圾计数和记录相关
@@ -73,20 +68,6 @@ class SerialManager:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
 
-        # 初始化串口屏
-            try:
-                self.screen_port = serial.Serial(
-                    SCREEN_PORT,
-                    SCREEN_BAUD,
-                    timeout=0.1,
-                    write_timeout=0.1
-                )
-                print(f"串口屏已初始化: {SCREEN_PORT}")
-                self.init_screen_table()  # 初始化表格
-            except Exception as e:
-                print(f"串口屏初始化失败: {str(e)}")
-                self.screen_port = None
-
         # 启动数据接收线程
         if self.stm32_port:
             self.receive_thread = threading.Thread(target=self.receive_stm32_data)
@@ -116,7 +97,6 @@ class SerialManager:
                                 print(f"解码后的数据: {decoded_data}")
                                 if decoded_data == FULL_SIGNAL:
                                     print("检测到满载信号")
-                                    self.send_to_screen_component("文本组件", "FULL")  # 发送到串口屏的第一行第一列
                         except UnicodeDecodeError as e:
                             hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
                             print(f"数据解码错误: {str(e)}")
@@ -142,9 +122,6 @@ class SerialManager:
             except Exception as e:
                 print(f"其他错误: {str(e)}")
                 print(f"错误类型: {type(e).__name__}")
-                # 根据需要决定是否终止线程，以下示例选择继续运行
-                # 如果需要终止，可以取消注释下一行
-                # break
                     
         print("串口接收线程终止")
 
@@ -194,7 +171,7 @@ class SerialManager:
         return True
 
     def update_garbage_count(self, garbage_type):
-        """更新垃圾计数并更新显示"""
+        """更新垃圾计数"""
         if not self.can_count_new_garbage(garbage_type):
             return
         
@@ -210,54 +187,6 @@ class SerialManager:
         self.last_count_time = time.time()
         self.is_counting_locked = True
         self.last_detected_type = garbage_type
-        
-        # 更新显示
-        self.update_screen_table()
-
-    def init_screen_table(self):
-        """初始化串口屏表格"""
-        # 清空所有文本框
-        for i in range(0, 11):  # 11行
-            for j in range(0, 4):  # 4列
-                self.send_to_screen_component(f"x{i}y{j}", "")
-    
-    def send_to_screen_component(self, component_id, text, encoding="UTF-8"):
-        """发送数据到特定的串口屏组件"""
-        if not self.screen_port or not self.screen_port.is_open:
-            return
-
-        try:
-            command = f'{component_id}.txt=\"{text}\"'.encode(encoding)
-            self.screen_port.write(command)
-            time.sleep(0.01)
-            self.screen_port.write(SCREEN_END)
-            self.screen_port.flush()
-            
-        except Exception as e:
-            print(f"串口屏组件 {component_id} 输出失败: {str(e)}")
-
-    def update_screen_table(self):
-        """更新串口屏表格显示"""
-        # 确保只显示最近的11条记录
-        recent_items = self.detected_items[-11:]
-        
-        # 先清空所有单元格
-        self.init_screen_table()
-        
-        # 更新显示内容
-        for i, item in enumerate(recent_items, 1):
-            # 序号
-            self.send_to_screen_component(f"x{i}y1", str(item['count']))
-            # 垃圾种类
-            self.send_to_screen_component(f"x{i}y2", item['type'])
-            # 数量
-            self.send_to_screen_component(f"x{i}y3", str(item['quantity']))
-            # 状态
-            self.send_to_screen_component(f"x{i}y4", item['status'])
-
-    def send_to_screen(self, text, encoding="UTF-8"):
-        """保留原方法，但主要使用新的表格更新方法"""
-        self.update_garbage_count(text)
 
     def send_to_stm32(self, class_id):
         """发送数据到STM32"""
@@ -288,8 +217,6 @@ class SerialManager:
         self.is_running = False
         if self.stm32_port and self.stm32_port.is_open:
             self.stm32_port.close()
-        if self.screen_port and self.screen_port.is_open:
-            self.screen_port.close()
             
 class WasteClassifier:
     def __init__(self):
@@ -393,8 +320,7 @@ class YOLODetector:
                 print(f"中心点位置: ({center_x}, {center_y})")
                 print("-" * 30)
                 self.serial_manager.send_to_stm32(class_id)
-                #self.serial_manager.send_to_stm32(category_id)
-                self.serial_manager.send_to_screen(display_text)
+                self.serial_manager.update_garbage_count(display_text)
         
         return frame
 
