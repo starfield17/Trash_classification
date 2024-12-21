@@ -35,24 +35,6 @@ class SerialManager:
         self.is_running = True
         self.last_stm32_send_time = 0
         self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
-        
-        # 垃圾计数和记录相关
-        self.garbage_count = 0  # 垃圾计数器
-        self.detected_items = []  # 存储检测到的垃圾记录
-        
-        # 防重复计数和稳定性检测相关
-        self.last_count_time = 0  # 上次计数的时间
-        self.COUNT_COOLDOWN = 5.0  # 计数冷却时间（秒）
-        self.is_counting_locked = False  # 计数锁定状态
-        self.last_detected_type = None  # 上次检测到的垃圾类型
-        
-        # 稳定性检测相关(当前物体)
-        self.current_detection = None  # 当前正在检测的物体类型
-        self.detection_start_time = 0  # 开始检测的时间
-        self.STABILITY_THRESHOLD = 1.0  # 稳定识别所需时间（秒）
-        self.stable_detection = False  # 是否已经稳定识别
-        self.detection_lost_time = 0  # 丢失检测的时间
-        self.DETECTION_RESET_TIME = 0.5  # 检测重置时间（秒）
 
         # 初始化STM32串口
         if ENABLE_SERIAL:
@@ -125,92 +107,77 @@ class SerialManager:
                     
         print("串口接收线程终止")
 
-    def check_detection_stability(self, garbage_type):
-        """检查检测的稳定性"""
-        current_time = time.time()
-        
-        # 如果检测到了新的物体类型，或者检测中断超过重置时间
-        if (garbage_type != self.current_detection or 
-            (current_time - self.detection_lost_time > self.DETECTION_RESET_TIME and 
-             self.detection_lost_time > 0)):
-            # 重置检测状态
-            self.current_detection = garbage_type
-            self.detection_start_time = current_time
-            self.stable_detection = False
-            self.detection_lost_time = 0
-            return False
-        
-        # 如果已经达到稳定识别时间
-        if (current_time - self.detection_start_time >= self.STABILITY_THRESHOLD and 
-            not self.stable_detection):
-            self.stable_detection = True
-            return True
-            
-        return self.stable_detection
-
-    def can_count_new_garbage(self, garbage_type):
-        """检查是否可以计数新垃圾"""
-        current_time = time.time()
-        
-        # 检查稳定性
-        if not self.check_detection_stability(garbage_type):
-            return False
-        
-        # 如果是新的垃圾类型，重置锁定状态
-        if garbage_type != self.last_detected_type:
-            self.is_counting_locked = False
-            self.last_detected_type = garbage_type
-        
-        # 检查是否在冷却时间内
-        if self.is_counting_locked:
-            if current_time - self.last_count_time >= self.COUNT_COOLDOWN:
-                self.is_counting_locked = False  # 解除锁定
-            else:
-                return False
-        
-        return True
-
-    def update_garbage_count(self, garbage_type):
-        """更新垃圾计数"""
-        if not self.can_count_new_garbage(garbage_type):
-            return
-        
-        self.garbage_count += 1
-        self.detected_items.append({
-            'count': self.garbage_count,
-            'type': garbage_type,
-            'quantity': 1,
-            'status': "正确"
-        })
-        
-        # 更新计数相关的状态
-        self.last_count_time = time.time()
-        self.is_counting_locked = True
-        self.last_detected_type = garbage_type
-
-    def send_to_stm32(self, class_id):
-        """发送数据到STM32"""
-        if not self.stm32_port or not self.stm32_port.is_open:
-            return
+def send_to_stm32(self, class_id, max_retries=3, retry_delay=0.1):
+    """
+    发送数据到STM32，带有重试机制和更好的错误处理
     
-        current_time = time.time()
-        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
-            return
+    Args:
+        class_id: 要发送的分类ID
+        max_retries: 最大重试次数
+        retry_delay: 重试间隔时间(秒)
+    """
+    if not self.stm32_port or not self.stm32_port.is_open:
+        print("串口未开启或未连接")
+        return False
+
+    # 检查发送间隔
+    current_time = time.time()
+    if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+        return False
+
+    # 数据验证
+    try:
+        class_id = int(class_id)
+        if not 0 <= class_id <= 3:  # 确保class_id在有效范围内
+            print(f"无效的分类ID: {class_id}")
+            return False
+    except (ValueError, TypeError):
+        print(f"分类ID格式错误: {class_id}")
+        return False
+
+    # 准备发送数据
+    data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
     
+    # 重试循环
+    for attempt in range(max_retries):
         try:
-            self.stm32_port.reset_input_buffer()
-            self.stm32_port.reset_output_buffer()
-            
+            # 检查串口状态
+            if not self.stm32_port.is_open:
+                print("串口已关闭，尝试重新打开")
+                self.stm32_port.open()
+                
+            # 只在第一次尝试时重置输出缓冲区
+            if attempt == 0:
+                self.stm32_port.reset_output_buffer()
+
             # 发送数据
-            data = FRAME_HEADER + str(class_id).encode('utf-8') + FRAME_FOOTER
-            self.stm32_port.write(data)
+            bytes_written = self.stm32_port.write(data)
             self.stm32_port.flush()
             
-            self.last_stm32_send_time = current_time
-            print(f"发送数据: {data}")
+            # 验证发送的数据长度
+            if bytes_written != len(data):
+                raise serial.SerialException(f"数据发送不完整: {bytes_written}/{len(data)} 字节")
             
+            self.last_stm32_send_time = current_time
+            print(f"发送数据成功: {data}, 字节数: {bytes_written}")
+            return True
+            
+        except serial.SerialException as e:
+            print(f"串口发送错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+            try:
+                self.stm32_port.close()
+                time.sleep(retry_delay)
+                self.stm32_port.open()
+            except Exception as reopen_error:
+                print(f"串口重新打开失败: {str(reopen_error)}")
+                continue
+                
         except Exception as e:
-            print(f"串口发送错误: {str(e)}")
+            print(f"其他错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+            time.sleep(retry_delay)
+            
+    print("发送数据失败，已达到最大重试次数")
+    return False
 
     def cleanup(self):
         """清理串口资源"""
@@ -320,7 +287,6 @@ class YOLODetector:
                 print(f"中心点位置: ({center_x}, {center_y})")
                 print("-" * 30)
                 self.serial_manager.send_to_stm32(class_id)
-                self.serial_manager.update_garbage_count(display_text)
         
         return frame
 
