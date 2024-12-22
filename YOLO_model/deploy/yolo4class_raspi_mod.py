@@ -58,7 +58,9 @@ class SerialManager:
         self.stable_detection = False  # 是否已经稳定识别
         self.detection_lost_time = 0  # 丢失检测的时间
         self.DETECTION_RESET_TIME = 0.5  # 检测重置时间（秒）
-
+        waste_classifier = WasteClassifier()
+        self.zero_mapping = max(waste_classifier.class_names.keys()) + 1
+        print(f"类别0将被映射到: {self.zero_mapping}")
         # 初始化STM32串口
         if ENABLE_SERIAL:
             try:
@@ -204,8 +206,9 @@ class SerialManager:
             self.stm32_port.reset_input_buffer()
             self.stm32_port.reset_output_buffer()
             
+                    # 如果是0则映射到预先计算的maping值
             if class_id == 0:
-                class_id = 4  # STM32那边无法处理"0"，所以改为"4"
+                class_id = self.zero_mapping  # 使用预先计算的映射值
             x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
             y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
             # 组装数据包：class_id + x坐标 + y坐标
