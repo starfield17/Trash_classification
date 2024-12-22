@@ -417,7 +417,7 @@ def augment_validation_set(num_augmentations=2):
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
 
-def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default', early_stop_map50=1, early_stop_map50_95=1):
+def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default'):
     """
     改进的YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
     
@@ -430,8 +430,6 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             - 'small_dataset': 数据集较小时的优化配置
             - 'focus_accuracy': 注重检测精度时的优化配置
             - 'focus_speed': 注重训练速度时的优化配置
-        early_stop_map50 (float): mAP50的目标阈值，达到此值时提前停止
-        early_stop_map50_95 (float): mAP50-95的目标阈值，达到此值时提前停止
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
     num_workers = max(1, os.cpu_count() - 1) if os.cpu_count() is not None else 4
@@ -444,7 +442,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'batch': 10,                             # 每个批次的样本数量
         'workers': num_workers,                  # 用于数据加载的工作线程数
         'device': '0',                           # 训练所使用的设备（如GPU 0）
-        'patience': 50,                          # 提前停止的容忍轮数
+        'patience': 15,                          # 提前停止的容忍轮数
         'save_period': 5,                        # 每隔多少轮保存一次模型
         'exist_ok': True,                        # 如果结果目录存在，是否覆盖
         'project': os.path.dirname(os.path.abspath(__file__)),  # 训练结果的项目目录
@@ -536,33 +534,13 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         train_args.update({
             'half': True
         })
-
-    try:
-        results = model.train(**train_args)
-        
-        # Check metrics after training
-        if hasattr(results, 'metrics') and results.metrics is not None:
-            map50 = results.metrics.get('metrics/mAP50(B)', 0)
-            map50_95 = results.metrics.get('metrics/mAP50-95(B)', 0)
-            
-            if early_stop_map50 and map50 >= early_stop_map50:
-                print(f"\nReached target mAP50: {map50:.3f} >= {early_stop_map50}")
-            
-            if early_stop_map50_95 and map50_95 >= early_stop_map50_95:
-                print(f"\nReached target mAP50-95: {map50_95:.3f} >= {early_stop_map50_95}")
-                
-        return results
-        
-    except Exception as e:
-        print(f"Training error: {str(e)}")
-        return None
     
     # 开始训练并传入所有参数
     try:
         results = model.train(**train_args)
         return results
-    except StopIteration:
-        print("\nTraining stopped early due to reaching target metrics.")
+    except Exception as e:
+        print(f"Training error: {str(e)}")
         return None
 
 def main():
@@ -592,8 +570,6 @@ def main():
             use_augmentation=False, 
             use_mixed_precision=True, 
             config='focus_accuracy',
-            early_stop_map50=0.95,     # 当mAP50到到此值以上停止训练
-            early_stop_map50_95=0.80   # 当mAP50-95到此值以上停止训练
         )
         
     except Exception as e:
