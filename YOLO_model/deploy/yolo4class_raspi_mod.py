@@ -14,7 +14,7 @@ ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
 
 # 串口配置
-STM32_PORT = '/dev/ttyS0'  # STM32串口(TX-> GPIO14,RX->GPIO15)
+STM32_PORT = '/dev/ttyS0'  # STM32串口(TX->GPIO14,RX->GPIO15)可选ttyAMA2(TX->GPIO0,RX->GPIO1)
 STM32_BAUD = 115200
 
 # 串口通信协议
@@ -197,7 +197,8 @@ class SerialManager:
         try:
             self.stm32_port.reset_input_buffer()
             self.stm32_port.reset_output_buffer()
-            
+            if class_id == 0 :
+                class_id=4#32那边无法处理"0"，所以改为"4"
             # 将class_id转换为单字节十六进制
             hex_data = bytes([class_id])
             data = hex_data
