@@ -577,7 +577,7 @@ def main():
         print("\nStep 4: Starting training with mixed precision...")
         # 设置较高的目标性能指标作为提前停止条件
         train_yolo(
-            use_augmentation=True, 
+            use_augmentation=False, 
             use_mixed_precision=True, 
             config='focus_accuracy',
             early_stop_map50=0.95,     # 当mAP50到到此值以上停止训练
