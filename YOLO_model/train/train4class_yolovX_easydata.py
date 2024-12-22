@@ -8,7 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-select_model='yolo11n.pt'
+select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
 
 def check_and_clean_dataset(data_dir):
