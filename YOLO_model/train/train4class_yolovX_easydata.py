@@ -8,7 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-from ultralytics.utils.callbacks.base import Callbacks
+
 select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
 
@@ -417,31 +417,6 @@ def augment_validation_set(num_augmentations=2):
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
 
-class EarlyStopCallback:
-    def __init__(self, map50_threshold=None, map50_95_threshold=None):
-        self.map50_threshold = map50_threshold
-        self.map50_95_threshold = map50_95_threshold
-        
-    def on_val_end(self, validator):
-        # 获取当前验证指标
-        metrics = validator.metrics
-        map50 = metrics.maps[0]  # mAP50
-        map50_95 = metrics.map   # mAP50-95
-        
-        stop_training = False
-        
-        # 检查是否达到提前停止的阈值
-        if self.map50_threshold and map50 >= self.map50_threshold:
-            print(f"\nReached target mAP50: {map50:.3f} >= {self.map50_threshold}")
-            stop_training = True
-            
-        if self.map50_95_threshold and map50_95 >= self.map50_95_threshold:
-            print(f"\nReached target mAP50-95: {map50_95:.3f} >= {self.map50_95_threshold}")
-            stop_training = True
-            
-        if stop_training:
-            raise StopIteration()
-
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default', early_stop_map50=1, early_stop_map50_95=1):
     """
     改进的YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
@@ -466,7 +441,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'data': 'data.yaml',                     # 数据集配置文件路径
         'epochs': 120,                           # 训练的总轮数
         'imgsz': 640,                            # 输入图像的尺寸
-        'batch': 12,                             # 每个批次的样本数量
+        'batch': 10,                             # 每个批次的样本数量
         'workers': num_workers,                  # 用于数据加载的工作线程数
         'device': '0',                           # 训练所使用的设备（如GPU 0）
         'patience': 50,                          # 提前停止的容忍轮数
@@ -559,15 +534,28 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
     # 启用混合精度训练
     if use_mixed_precision:
         train_args.update({
-            'half': True                         # 启用混合精度训练
+            'half': True
         })
 
-
-    if early_stop_map50 is not None or early_stop_map50_95 is not None:
-        early_stop_callback = EarlyStopCallback(early_stop_map50, early_stop_map50_95)
-        callbacks = Callbacks()
-        callbacks.register_action('on_val_end', early_stop_callback.on_val_end)
-        train_args['callbacks'] = callbacks
+    try:
+        results = model.train(**train_args)
+        
+        # Check metrics after training
+        if hasattr(results, 'metrics') and results.metrics is not None:
+            map50 = results.metrics.get('metrics/mAP50(B)', 0)
+            map50_95 = results.metrics.get('metrics/mAP50-95(B)', 0)
+            
+            if early_stop_map50 and map50 >= early_stop_map50:
+                print(f"\nReached target mAP50: {map50:.3f} >= {early_stop_map50}")
+            
+            if early_stop_map50_95 and map50_95 >= early_stop_map50_95:
+                print(f"\nReached target mAP50-95: {map50_95:.3f} >= {early_stop_map50_95}")
+                
+        return results
+        
+    except Exception as e:
+        print(f"Training error: {str(e)}")
+        return None
     
     # 开始训练并传入所有参数
     try:
