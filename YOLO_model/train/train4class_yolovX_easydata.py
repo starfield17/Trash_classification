@@ -480,7 +480,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         })
     elif config == 'focus_accuracy':
         train_args.update({
-            'imgsz': 800,                        # 1024也可
+            'imgsz': 832,                        # 1024也可
             'box': 6.0,                         
             'cls': 3.0,                          
             'dfl': 2.5,            
