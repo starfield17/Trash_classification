@@ -413,115 +413,128 @@ def augment_validation_set(num_augmentations=2):
     
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
-def train_yolo(use_augmentation=False):
-   """改进的YOLO训练配置，增加数据增强开关
-   Args:
-       use_augmentation (bool): 是否启用数据增强，默认为True
-   """
-   model = YOLO('yolo11n.pt')
-   
-   # 基础训练参数
-   train_args = {
-       'data': 'data.yaml',
-       'epochs': 200,          # 可选: 300(更充分训练), 150(如果提前收敛)
-       'imgsz': 640,          # 可选: 1024(更好的大目标检测), 512(更快的训练速度)
-       'batch': 24,           # 可选: 32/48(GPU内存允许时), 16(内存不足时)
-       'workers': 16,
-       'device': '0',
-       'patience': 50,        # 可选: 30(更快停止), 100(更有耐心)
-       'save_period': 5,
-       'exist_ok': True,
-       'project': os.path.dirname(os.path.abspath(__file__)),
-       'name': 'runs/train',
-       
-       # 优化器参数
-       'optimizer': 'AdamW',  # 可选: 'SGD'(经典优化器), 'Adam'(不带权重衰减)
-       'lr0': 0.0005,        # 可选: 0.001(更快收敛), 0.0001(更稳定)
-       'lrf': 0.01,          # 可选: 0.05(更缓和衰减), 0.001(更激进衰减)
-       'momentum': 0.937,     # 可选: 0.9(标准设置), 0.95(更强动量)
-       'weight_decay': 0.0005,# 可选: 0.001(更强正则化), 0.0001(更弱正则化)
-       'warmup_epochs': 10,   # 可选: 5(简单数据集), 15-20(复杂数据集)
-       'warmup_momentum': 0.5,
-       'warmup_bias_lr': 0.05,
-       
-       # 损失函数权重
-       'box': 4.0,           # 可选: 5.0(如果定位不准)
-       'cls': 2.0,           # 可选: 1.5-2.0(如果分类不准)
-       'dfl': 1.5,           # 可选: 2.0(如果需要更精确的定位)
-       
-       # 其他基础配置
-       'close_mosaic': 0,
-       'nbs': 64,            # 可选: 32或128
-       'overlap_mask': False,
-       'multi_scale': False,
-       'single_cls': False,
-   }
-   
-   # 数据集较大时的优化配置示例:
-   # train_args.update({
-   #     'batch': 32,
-   #     'lr0': 0.001,
-   #     'epochs': 150,
-   #     'patience': 30
-   # })
-   
-   # 数据集较小时的优化配置示例:
-   # train_args.update({
-   #     'batch': 16,
-   #     'lr0': 0.0001,
-   #     'weight_decay': 0.001,
-   #     'warmup_epochs': 15
-   # })
-   
-   # 注重检测精度时的优化配置示例:
-   # train_args.update({
-   #     'imgsz': 1024,
-   #     'box': 5.0,
-   #     'dfl': 2.0,
-   #     'patience': 100
-   # })
-   
-   # 注重训练速度时的优化配置示例:
-   # train_args.update({
-   #     'imgsz': 512,
-   #     'epochs': 150,
-   #     'patience': 30,
-   #     'batch': 48  # 如果GPU内存允许
-   # })
-   
-   # 数据增强参数，仅在use_augmentation=True时添加
-   if use_augmentation:
-       augmentation_args = {
-           'augment': True,
-           'degrees': 5.0,
-           'scale': 0.2,
-           'fliplr': 0.5,
-           'flipud': 0.0,
-           'hsv_h': 0.01,
-           'hsv_s': 0.2,
-           'hsv_v': 0.1,
-           'mosaic': 0,  # 保持关闭复杂增强
-           'mixup': 0,
-           'copy_paste': 0,
-       }
-       train_args.update(augmentation_args)
-   else:
-       # 关闭所有数据增强
-       train_args.update({
-           'augment': False,
-           'degrees': 0.0,
-           'scale': 0.0,
-           'fliplr': 0.0,
-           'flipud': 0.0,
-           'hsv_h': 0.0,
-           'hsv_s': 0.0,
-           'hsv_v': 0.0,
-           'mosaic': 0,
-           'mixup': 0,
-           'copy_paste': 0,
-       })
-   
-   results = model.train(**train_args)
+def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default'):
+    """
+    改进的YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
+    
+    Args:
+        use_augmentation (bool): 是否启用数据增强，默认为False。
+        use_mixed_precision (bool): 是否启用混合精度训练，默认为False。
+        config (str): 训练配置模式，默认是'default'。可选项包括:
+            - 'default': 默认配置
+            - 'large_dataset': 数据集较大时的优化配置
+            - 'small_dataset': 数据集较小时的优化配置
+            - 'focus_accuracy': 注重检测精度时的优化配置
+            - 'focus_speed': 注重训练速度时的优化配置
+    """
+    model = YOLO('yolo11n.pt')  # 加载预训练的YOLO模型权重
+    num_workers = max(1, os.cpu_count() - 1) if os.cpu_count() is not None else 4
+    # 基础训练参数
+    train_args = {
+        'data': 'data.yaml',                     # 数据集配置文件路径
+        'epochs': 120,                           # 训练的总轮数
+        'imgsz': 640,                            # 输入图像的尺寸
+        'batch': 12,                             # 每个批次的样本数量
+        'workers': num_workers,                  # 用于数据加载的工作线程数
+        'device': '0',                           # 训练所使用的设备（如GPU 0）
+        'patience': 50,                          # 提前停止的容忍轮数
+        'save_period': 5,                        # 每隔多少轮保存一次模型
+        'exist_ok': True,                        # 如果结果目录存在，是否覆盖
+        'project': os.path.dirname(os.path.abspath(__file__)),  # 训练结果的项目目录
+        'name': 'runs/train',                    # 训练运行的名称
+        'optimizer': 'AdamW',                    # 优化器类型
+        'lr0': 0.0005,                           # 初始学习率
+        'lrf': 0.01,                             # 最终学习率与初始学习率的比例
+        'momentum': 0.937,                       # 优化器的动量参数
+        'weight_decay': 0.0005,                  # 权重衰减（正则化）系数
+        'warmup_epochs': 10,                     # 预热阶段的轮数
+        'warmup_momentum': 0.5,                  # 预热阶段的动量
+        'warmup_bias_lr': 0.05,                  # 预热阶段偏置的学习率
+        'box': 4.0,                              # 边界框回归损失权重
+        'cls': 2.0,                              # 分类损失权重
+        'dfl': 1.5,                              # 分布式焦点损失权重
+        'close_mosaic': 0,                       # 是否关闭马赛克数据增强（0为关闭，1为开启）
+        'nbs': 64,                               # 基础批次大小，用于学习率调整
+        'overlap_mask': False,                   # 是否使用重叠掩码
+        'multi_scale': True,                    # 是否启用多尺度训练
+        'single_cls': False,                     # 是否将所有类别视为单一类别
+    }
+    # 根据配置模式更新训练参数
+    if config == 'large_dataset':
+        # 数据集较大时的优化配置
+        train_args.update({
+            'batch': 32,
+            'lr0': 0.001,
+            'epochs': 150,
+            'patience': 30
+        })
+    elif config == 'small_dataset':
+        # 数据集较小时的优化配置
+        train_args.update({
+            'batch': 16,
+            'lr0': 0.0001,
+            'weight_decay': 0.001,
+            'warmup_epochs': 15
+        })
+    elif config == 'focus_accuracy':
+        # 注重检测精度时的优化配置
+        train_args.update({
+            'imgsz': 800,   #1024也可
+            'box': 6.0,      # 增加边界框回归损失权重
+            'cls': 3.0,      # 增加分类损失权重
+            'dfl': 2.5,      # 进一步增加分布式焦点损失权重
+            'patience': 100
+        })
+    elif config == 'focus_speed':
+        # 注重训练速度时的优化配置
+        train_args.update({
+            'imgsz': 512,
+            'epochs': 150,
+            'patience': 30,
+            'batch': 48  # 如果GPU内存允许
+        })
+    elif config != 'default':
+        print(f"警告: 未识别的配置模式 '{config}'，将使用默认配置。")
+    # 数据增强参数
+    if use_augmentation:
+        augmentation_args = {
+            'augment': True,                      # 启用数据增强
+            'degrees': 5.0,                       # 随机旋转的角度范围
+            'scale': 0.2,                         # 随机缩放的比例范围
+            'fliplr': 0.5,                        # 随机水平翻转的概率
+            'flipud': 0.0,                        # 随机垂直翻转的概率
+            'hsv_h': 0.01,                        # 随机调整色调的范围
+            'hsv_s': 0.2,                         # 随机调整饱和度的范围
+            'hsv_v': 0.1,                         # 随机调整明度的范围
+            'mosaic': 0,                          # 马赛克增强的比例（0为关闭）
+            'mixup': 0,                           # 混合增强的比例（0为关闭）
+            'copy_paste': 0,                      # 复制粘贴增强的比例（0为关闭）
+        }
+        train_args.update(augmentation_args)         # 更新训练参数以包含数据增强配置
+    else:
+        train_args.update({
+            'augment': False,                     # 禁用数据增强
+            'degrees': 0.0,                       # 禁用旋转
+            'scale': 0.0,                         # 禁用缩放
+            'fliplr': 0.0,                        # 禁用水平翻转
+            'flipud': 0.0,                        # 禁用垂直翻转
+            'hsv_h': 0.0,                         # 禁用色调调整
+            'hsv_s': 0.0,                         # 禁用饱和度调整
+            'hsv_v': 0.0,                         # 禁用明度调整
+            'mosaic': 0,                          # 禁用马赛克增强
+            'mixup': 0,                           # 禁用混合增强
+            'copy_paste': 0,                      # 禁用复制粘贴增强
+        })
+
+    # 启用混合精度训练
+    if use_mixed_precision:
+        train_args.update({
+            'half': True  # 启用混合精度训练，可以加快训练速度并减少显存占用
+        })
+
+    # 开始训练并传入所有参数
+    results = model.train(**train_args)
+
 
 
 def main():
@@ -537,20 +550,21 @@ def main():
         print("\nStep 2: Creating data.yaml...")
         create_data_yaml()
         
-        # 3. 准备数据集 (不再增强验证集)
+        # 3. 准备数据集
         print("\nStep 3: Preparing dataset...")
         train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs)
         
         if val_size < 5:  # 降低最小验证集大小要求
             raise ValueError(f"Validation set too small ({val_size} images). Need at least 5 images.")
             
-        # 4. 开始训练
-        print("\nStep 4: Starting training...")
-        train_yolo()
+        # 4. 开始训练，启用混合精度训练
+        print("\nStep 4: Starting training with mixed precision...")
+        train_yolo(use_augmentation=True, use_mixed_precision=True, config='focus_accuracy')
         
     except Exception as e:
         print(f"Error during execution: {str(e)}")
         raise
+
 
 if __name__ == "__main__":
     main()
