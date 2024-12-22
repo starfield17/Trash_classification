@@ -12,14 +12,20 @@ import sys
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
-
 # 串口配置
-STM32_PORT = '/dev/ttyS0'  # STM32串口(TX->GPIO14,RX->GPIO15)可选ttyAMA2(TX->GPIO0,RX->GPIO1)
+# STM32串口对应关系：
+# 串口名称  | TX引脚  | RX引脚
+# ttyS0    | GPIO14 | GPIO15
+# ttyAMA2  | GPIO0  | GPIO1
+# ttyAMA3  | GPIO4  | GPIO5
+# ttyAMA4  | GPIO8  | GPIO9
+# ttyAMA5  | GPIO12 | GPIO13
+STM32_PORT = '/dev/ttyAMA2'  # 选择使用的串口
 STM32_BAUD = 115200
+CAMERA_WIDTH = 1280   # 摄像头宽度
+CAMERA_HEIGHT = 720   # 摄像头高度
+MAX_SERIAL_VALUE = 255  # 串口发送的最大值
 
-# 串口通信协议
-FRAME_HEADER = b''  # 帧头(STM32)可为空
-FRAME_FOOTER = b''  # 帧尾(STM32)可为空
 
 def setup_gpu():
     if not torch.cuda.is_available():
@@ -185,7 +191,7 @@ class SerialManager:
         self.is_counting_locked = True
         self.last_detected_type = garbage_type
 
-    def send_to_stm32(self, class_id):
+    def send_to_stm32(self, class_id, center_x, center_y):
         """发送数据到STM32"""
         if not self.stm32_port or not self.stm32_port.is_open:
             return
@@ -197,11 +203,14 @@ class SerialManager:
         try:
             self.stm32_port.reset_input_buffer()
             self.stm32_port.reset_output_buffer()
-            if class_id == 0 :
-                class_id=4#32那边无法处理"0"，所以改为"4"
-            # 将class_id转换为单字节十六进制
-            hex_data = bytes([class_id])
-            data = hex_data
+            
+            if class_id == 0:
+                class_id = 4  # STM32那边无法处理"0"，所以改为"4"
+            x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
+            y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
+            
+            # 组装数据包：class_id + x坐标 + y坐标
+            data = bytes([class_id, x_scaled, y_scaled])
             
             # 发送数据
             self.stm32_port.write(data)
@@ -209,8 +218,8 @@ class SerialManager:
             
             self.last_stm32_send_time = current_time
             print(f"发送数据: {' '.join([f'0x{b:02X}' for b in data])}")
-            print(f"发送的分类ID (十六进制): 0x{class_id:02X}")
-            print(f"发送的分类ID (十进制): {class_id}")
+            print(f"发送的分类ID: {class_id}")
+            print(f"发送的中心坐标: X={x_scaled} (0x{x_scaled:02X}), Y={y_scaled} (0x{y_scaled:02X})")
             
         except Exception as e:
             print(f"串口发送错误: {str(e)}")
@@ -322,7 +331,7 @@ class YOLODetector:
                 print(f"边界框位置: ({x1}, {y1}), ({x2}, {y2})")
                 print(f"中心点位置: ({center_x}, {center_y})")
                 print("-" * 30)
-                self.serial_manager.send_to_stm32(class_id)
+                self.serial_manager.send_to_stm32(class_id, center_x, center_y)
                 self.serial_manager.update_garbage_count(display_text)
         
         return frame
