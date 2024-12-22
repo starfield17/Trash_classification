@@ -208,19 +208,29 @@ class SerialManager:
                 class_id = 4  # STM32那边无法处理"0"，所以改为"4"
             x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
             y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
-            
             # 组装数据包：class_id + x坐标 + y坐标
             data = bytes([class_id, x_scaled, y_scaled])
-            
             # 发送数据
             self.stm32_port.write(data)
             self.stm32_port.flush()
-            
             self.last_stm32_send_time = current_time
-            print(f"发送数据: {' '.join([f'0x{b:02X}' for b in data])}")
-            print(f"发送的分类ID: {class_id}")
-            print(f"发送的中心坐标: X={x_scaled} (0x{x_scaled:02X}), Y={y_scaled} (0x{y_scaled:02X})")
-            
+            print("\n----- 串口发送数据详情 -----")
+            print(f"发送的原始数据: {' '.join([f'0x{b:02X}' for b in data])}")
+            print(f"数据包总长度: {len(data)} 字节")
+            print("\n--- 分类信息 ---")
+            print(f"原始分类ID: {class_id if class_id != 4 else 0}")  # 显示原始的0而不是转换后的4
+            print(f"发送的分类ID (十进制): {class_id}")
+            print(f"发送的分类ID (十六进制): 0x{class_id:02X}")
+            print("\n--- 坐标信息 ---")
+            print(f"原始中心坐标: X={center_x}, Y={center_y}")
+            print(f"缩放比例: X=1:{CAMERA_WIDTH/255:.2f}, Y=1:{CAMERA_HEIGHT/255:.2f}")
+            print(f"缩放后坐标 (十进制): X={x_scaled}, Y={y_scaled}")
+            print(f"缩放后坐标 (十六进制): X=0x{x_scaled:02X}, Y=0x{y_scaled:02X}")
+            print(f"坐标在画面中的相对位置: X={center_x/CAMERA_WIDTH*100:.1f}%, Y={center_y/CAMERA_HEIGHT*100:.1f}%")
+            print("\n--- 时序信息 ---")
+            print(f"距离上次发送的时间: {current_time - self.last_stm32_send_time:.3f}秒")
+            print(f"当前系统时间戳: {current_time:.3f}")
+            print("-" * 30)
         except Exception as e:
             print(f"串口发送错误: {str(e)}")
 
