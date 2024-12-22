@@ -413,7 +413,7 @@ def augment_validation_set(num_augmentations=2):
     
     total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
     print(f"Augmented validation set contains {total_images} images")
-def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default'):
+def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default', early_stop_map50=1, early_stop_map50_95=1):
     """
     改进的YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
     
@@ -426,9 +426,12 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             - 'small_dataset': 数据集较小时的优化配置
             - 'focus_accuracy': 注重检测精度时的优化配置
             - 'focus_speed': 注重训练速度时的优化配置
+        early_stop_map50 (float): mAP50的目标阈值，达到此值时提前停止
+        early_stop_map50_95 (float): mAP50-95的目标阈值，达到此值时提前停止
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
     num_workers = max(1, os.cpu_count() - 1) if os.cpu_count() is not None else 4
+    
     # 基础训练参数
     train_args = {
         'data': 'data.yaml',                     # 数据集配置文件路径
@@ -453,15 +456,15 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'box': 4.0,                              # 边界框回归损失权重
         'cls': 2.0,                              # 分类损失权重
         'dfl': 1.5,                              # 分布式焦点损失权重
-        'close_mosaic': 0,                       # 是否关闭马赛克数据增强（0为关闭，1为开启）
-        'nbs': 64,                               # 基础批次大小，用于学习率调整
+        'close_mosaic': 0,                       # 是否关闭马赛克数据增强
+        'nbs': 64,                               # 基础批次大小
         'overlap_mask': False,                   # 是否使用重叠掩码
-        'multi_scale': True,                    # 是否启用多尺度训练
+        'multi_scale': True,                     # 是否启用多尺度训练
         'single_cls': False,                     # 是否将所有类别视为单一类别
     }
+    
     # 根据配置模式更新训练参数
     if config == 'large_dataset':
-        # 数据集较大时的优化配置
         train_args.update({
             'batch': 32,
             'lr0': 0.001,
@@ -469,7 +472,6 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             'patience': 30
         })
     elif config == 'small_dataset':
-        # 数据集较小时的优化配置
         train_args.update({
             'batch': 16,
             'lr0': 0.0001,
@@ -477,64 +479,78 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             'warmup_epochs': 15
         })
     elif config == 'focus_accuracy':
-        # 注重检测精度时的优化配置
         train_args.update({
-            'imgsz': 800,   #1024也可
-            'box': 6.0,      # 增加边界框回归损失权重
-            'cls': 3.0,      # 增加分类损失权重
-            'dfl': 2.5,      # 进一步增加分布式焦点损失权重
+            'imgsz': 800,                        # 1024也可
+            'box': 6.0,                         
+            'cls': 3.0,                          
+            'dfl': 2.5,            
             'patience': 100
         })
     elif config == 'focus_speed':
-        # 注重训练速度时的优化配置
         train_args.update({
             'imgsz': 512,
             'epochs': 150,
             'patience': 30,
-            'batch': 48  # 如果GPU内存允许
+            'batch': 48                          # 如果GPU内存允许
         })
     elif config != 'default':
         print(f"警告: 未识别的配置模式 '{config}'，将使用默认配置。")
+
     # 数据增强参数
     if use_augmentation:
         augmentation_args = {
-            'augment': True,                      # 启用数据增强
-            'degrees': 5.0,                       # 随机旋转的角度范围
-            'scale': 0.2,                         # 随机缩放的比例范围
-            'fliplr': 0.5,                        # 随机水平翻转的概率
-            'flipud': 0.0,                        # 随机垂直翻转的概率
-            'hsv_h': 0.01,                        # 随机调整色调的范围
-            'hsv_s': 0.2,                         # 随机调整饱和度的范围
-            'hsv_v': 0.1,                         # 随机调整明度的范围
-            'mosaic': 0,                          # 马赛克增强的比例（0为关闭）
-            'mixup': 0,                           # 混合增强的比例（0为关闭）
-            'copy_paste': 0,                      # 复制粘贴增强的比例（0为关闭）
+            'augment': True,                     # 启用数据增强
+            'degrees': 5.0,                      # 随机旋转的角度范围
+            'scale': 0.2,                        # 随机缩放的比例范围
+            'fliplr': 0.5,                       # 随机水平翻转的概率
+            'flipud': 0.0,                       # 随机垂直翻转的概率
+            'hsv_h': 0.01,                       # 随机调整色调的范围
+            'hsv_s': 0.2,                        # 随机调整饱和度的范围
+            'hsv_v': 0.1,                        # 随机调整明度的范围
+            'mosaic': 0,                         # 马赛克增强的比例
+            'mixup': 0,                          # 混合增强的比例
+            'copy_paste': 0,                     # 复制粘贴增强的比例
         }
-        train_args.update(augmentation_args)         # 更新训练参数以包含数据增强配置
+        train_args.update(augmentation_args)
     else:
         train_args.update({
-            'augment': False,                     # 禁用数据增强
-            'degrees': 0.0,                       # 禁用旋转
-            'scale': 0.0,                         # 禁用缩放
-            'fliplr': 0.0,                        # 禁用水平翻转
-            'flipud': 0.0,                        # 禁用垂直翻转
-            'hsv_h': 0.0,                         # 禁用色调调整
-            'hsv_s': 0.0,                         # 禁用饱和度调整
-            'hsv_v': 0.0,                         # 禁用明度调整
-            'mosaic': 0,                          # 禁用马赛克增强
-            'mixup': 0,                           # 禁用混合增强
-            'copy_paste': 0,                      # 禁用复制粘贴增强
+            'augment': False,                    # 禁用数据增强
+            'degrees': 0.0,                      # 禁用旋转
+            'scale': 0.0,                        # 禁用缩放
+            'fliplr': 0.0,                       # 禁用水平翻转
+            'flipud': 0.0,                       # 禁用垂直翻转
+            'hsv_h': 0.0,                        # 禁用色调调整
+            'hsv_s': 0.0,                        # 禁用饱和度调整
+            'hsv_v': 0.0,                        # 禁用明度调整
+            'mosaic': 0,                         # 禁用马赛克增强
+            'mixup': 0,                          # 禁用混合增强
+            'copy_paste': 0,                     # 禁用复制粘贴增强
         })
 
     # 启用混合精度训练
     if use_mixed_precision:
         train_args.update({
-            'half': True  # 启用混合精度训练，可以加快训练速度并减少显存占用
+            'half': True                         # 启用混合精度训练
         })
 
+    # 定义回调函数用于提前停止
+    def on_train_epoch_end(trainer):
+        metrics = trainer.metrics
+        if metrics.get('metrics/mAP50(B)', 0) >= early_stop_map50 and \
+           metrics.get('metrics/mAP50-95(B)', 0) >= early_stop_map50_95:
+            print(f"\nReached target performance (mAP50 >= {early_stop_map50} and mAP50-95 >= {early_stop_map50_95})")
+            print("Stopping training early and saving model...")
+            # 保存当前模型
+            trainer.model.save(f'runs/train/weights/early_stop_epoch_{trainer.epoch}.pt')
+            trainer.epoch = trainer.epochs + 1  # 强制结束训练
+            return False
+        return True
+
+    # 添加回调函数到训练参数
+    train_args['callbacks'] = {'on_train_epoch_end': on_train_epoch_end}
+    
     # 开始训练并传入所有参数
     results = model.train(**train_args)
-
 
 
 def main():
@@ -557,9 +573,16 @@ def main():
         if val_size < 5:  # 降低最小验证集大小要求
             raise ValueError(f"Validation set too small ({val_size} images). Need at least 5 images.")
             
-        # 4. 开始训练，启用混合精度训练
+        # 4. 开始训练，启用混合精度训练和提前停止机制
         print("\nStep 4: Starting training with mixed precision...")
-        train_yolo(use_augmentation=True, use_mixed_precision=True, config='focus_accuracy')
+        # 设置较高的目标性能指标作为提前停止条件
+        train_yolo(
+            use_augmentation=True, 
+            use_mixed_precision=True, 
+            config='focus_accuracy',
+            early_stop_map50=0.95,     # 当mAP50到到此值以上停止训练
+            early_stop_map50_95=0.80   # 当mAP50-95到此值以上停止训练
+        )
         
     except Exception as e:
         print(f"Error during execution: {str(e)}")
