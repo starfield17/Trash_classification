@@ -461,6 +461,8 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'overlap_mask': False,                   # 是否使用重叠掩码
         'multi_scale': True,                     # 是否启用多尺度训练
         'single_cls': False,                     # 是否将所有类别视为单一类别
+        'stop_train_mAP50': early_stop_map50,        # mAP50 阈值
+        'stop_train_mAP50_95': early_stop_map50_95,  # mAP50-95 阈值
     }
     
     # 根据配置模式更新训练参数
@@ -533,21 +535,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             'half': True                         # 启用混合精度训练
         })
 
-    # 定义回调函数用于提前停止
-    def on_train_epoch_end(trainer):
-        metrics = trainer.metrics
-        if metrics.get('metrics/mAP50(B)', 0) >= early_stop_map50 and \
-           metrics.get('metrics/mAP50-95(B)', 0) >= early_stop_map50_95:
-            print(f"\nReached target performance (mAP50 >= {early_stop_map50} and mAP50-95 >= {early_stop_map50_95})")
-            print("Stopping training early and saving model...")
-            # 保存当前模型
-            trainer.model.save(f'runs/train/weights/early_stop_epoch_{trainer.epoch}.pt')
-            trainer.epoch = trainer.epochs + 1  # 强制结束训练
-            return False
-        return True
 
-    # 添加回调函数到训练参数
-    train_args['callbacks'] = {'on_train_epoch_end': on_train_epoch_end}
     
     # 开始训练并传入所有参数
     results = model.train(**train_args)
