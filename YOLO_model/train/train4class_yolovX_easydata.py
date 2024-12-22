@@ -8,7 +8,7 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-Models='yolo11n.pt'
+select_model='yolo11n.pt'
 datapath='./label'  # 根据实际情况修改
 
 def check_and_clean_dataset(data_dir):
@@ -427,7 +427,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             - 'focus_accuracy': 注重检测精度时的优化配置
             - 'focus_speed': 注重训练速度时的优化配置
     """
-    model = YOLO(Models)  # 加载预训练的YOLO模型权重
+    model = YOLO(select_model)  # 加载预训练的YOLO模型权重
     num_workers = max(1, os.cpu_count() - 1) if os.cpu_count() is not None else 4
     # 基础训练参数
     train_args = {
