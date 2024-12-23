@@ -618,18 +618,18 @@ YOLOv11: yolo11n.pt, yolo11s.pt   // Ultralytics最新发布的SOTA模型
 
 ### 模型尺寸(从小到大)
 ```
-nano(n) < small(s)
-YOLOv11-n < YOLOv10-n < YOLOv8-n < YOLOv11-s < YOLOv10-s < YOLOv8-s
+nano(n) < tiny(t) < small(s)
+YOLOv11-n < YOLOv10-n < YOLOv8-n < YOLOv9-t < YOLOv11-s < YOLOv10-s < YOLOv9-s < YOLOv8-s
 ```
 
 ### 推理速度(从快到慢)
 ```
-YOLOv11-n > YOLOv10-n > YOLOv8-n > YOLOv11-s > YOLOv10-s > YOLOv8-s
+YOLOv11-n > YOLOv10-n > YOLOv8-n > YOLOv9-t > YOLOv11-s > YOLOv10-s > YOLOv9-s > YOLOv8-s
 ```
 
 ### 检测精度(从高到低)
 ```
-YOLOv11-s > YOLOv10-s > YOLOv8-s > YOLOv11-n > YOLOv10-n > YOLOv8-n
+YOLOv11-s > YOLOv10-s > YOLOv9-s > YOLOv8-s > YOLOv11-n > YOLOv10-n > YOLOv9-t > YOLOv8-n
 ```
 
 ## 选型建议
@@ -641,13 +641,19 @@ YOLOv11-s > YOLOv10-s > YOLOv8-s > YOLOv11-n > YOLOv10-n > YOLOv8-n
 2. **稳定性要求**：
    - 选择YOLOv8系列
    - 有完善的生态支持
-
+   
 3. **性能与效率平衡**：
    - 选择YOLOv10系列
    - 在各类场景下都有不错表现
+   
+4. **实验性能力**：
+   - 选择YOLOv9系列
+   - PGI架构提供更好的特征提取
+   - tiny版本适合快速实验验证
 
-4. **资源约束**：
+5. **资源约束**：
    - nano版本用于边缘设备
+   - tiny版本用于超轻量场景
    - small版本用于标准环境
   
 # 故障排除指南
