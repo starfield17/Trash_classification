@@ -13,7 +13,7 @@ DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
 # 串口配置
-# STM32串口对应关系：
+# 可用串口对应关系(raspberrypi)：
 # 串口名称  | TX引脚  | RX引脚
 # ttyS0    | GPIO14 | GPIO15
 # ttyAMA2  | GPIO0  | GPIO1
