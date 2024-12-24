@@ -348,6 +348,207 @@ class YOLODetector:
                 self.serial_manager.update_garbage_count(display_text)
         
         return frame
+class ONNXDetector:
+    def __init__(self, model_path):
+        """
+        初始化ONNX模型检测器
+        Args:
+            model_path: ONNX模型的路径，例如 'best.onnx'
+        """
+        import onnxruntime as ort
+
+        # 检查CUDA是否可用并设置推理设备
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if torch.cuda.is_available() else ['CPUExecutionProvider']
+        self.session = ort.InferenceSession(model_path, providers=providers)
+        
+        # 获取模型输入输出信息
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_names = [output.name for output in self.session.get_outputs()]
+        
+        # 获取模型输入shape
+        self.input_shape = self.session.get_inputs()[0].shape
+        self.input_width = self.input_shape[2]
+        self.input_height = self.input_shape[3]
+        
+        # 分类名称和颜色设置（保持不变）
+        self.class_names = {
+            0: '厨余垃圾',
+            1: '可回收垃圾',
+            2: '有害垃圾',
+            3: '其他垃圾'
+        }
+
+        self.colors = {
+            0: (86, 180, 233),    # 厨余垃圾 - 蓝色
+            1: (230, 159, 0),     # 可回收垃圾 - 橙色
+            2: (240, 39, 32),     # 有害垃圾 - 红色
+            3: (0, 158, 115)      # 其他垃圾 - 绿色
+        }
+        
+        self.serial_manager = SerialManager()
+
+    def preprocess(self, frame):
+        """
+        预处理图像
+        Args:
+            frame: OpenCV格式的图像(BGR)
+        Returns:
+            preprocessed_img: 预处理后的图像张量
+        """
+        # 调整图像大小
+        img = cv2.resize(frame, (self.input_width, self.input_height))
+        
+        # BGR到RGB转换
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # 归一化到[0,1]
+        img = img.astype(np.float32) / 255.0
+        
+        # 调整维度顺序从HWC到NCHW
+        img = img.transpose(2, 0, 1)
+        
+        # 添加batch维度
+        img = np.expand_dims(img, 0)
+        
+        return img
+
+    def postprocess(self, outputs, orig_shape):
+        """
+        后处理ONNX模型输出
+        Args:
+            outputs: 模型输出
+            orig_shape: 原始图像形状
+        Returns:
+            boxes: 边界框
+            scores: 置信度分数
+            class_ids: 类别ID
+        """
+        predictions = np.squeeze(outputs[0])  # 移除batch维度
+        
+        # 如果没有检测到任何物体
+        if len(predictions.shape) == 1:
+            return [], [], []
+
+        # 获取所有置信度大于阈值的预测
+        mask = predictions[:, 4] >= CONF_THRESHOLD
+        predictions = predictions[mask]
+        
+        if len(predictions) == 0:
+            return [], [], []
+            
+        # 提取类别ID和分数
+        class_ids = np.argmax(predictions[:, 5:], axis=1)
+        scores = np.max(predictions[:, 5:], axis=1) * predictions[:, 4]
+        
+        # 提取边界框坐标
+        boxes = predictions[:, :4]
+        
+        # 将坐标转换回原始图像尺寸
+        scale_x = orig_shape[1] / self.input_width
+        scale_y = orig_shape[0] / self.input_height
+        
+        boxes[:, [0, 2]] *= scale_x
+        boxes[:, [1, 3]] *= scale_y
+        
+        return boxes.astype(np.int32), scores, class_ids.astype(np.int32)
+
+    def detect(self, frame):
+        """
+        在图像上进行目标检测
+        Args:
+            frame: OpenCV格式的图像
+        Returns:
+            frame: 标注后的图像
+        """
+        # 保存原始图像尺寸
+        orig_shape = frame.shape
+        
+        # 预处理图像
+        input_tensor = self.preprocess(frame)
+        
+        # 执行推理
+        outputs = self.session.run(self.output_names, {self.input_name: input_tensor})
+        
+        # 后处理获取结果
+        boxes, scores, class_ids = self.postprocess(outputs, orig_shape)
+        
+        # 如果有检测结果
+        if len(boxes) > 0:
+            # 获取最高置信度的检测结果
+            max_conf_idx = np.argmax(scores)
+            box = boxes[max_conf_idx]
+            confidence = scores[max_conf_idx]
+            class_id = class_ids[max_conf_idx]
+            
+            x1, y1, x2, y2 = box
+            center_x = int((x1 + x2) / 2)
+            center_y = int((y1 + y2) / 2)
+            
+            waste_classifier = WasteClassifier()
+            category_id, description = waste_classifier.get_category_info(class_id)
+            display_text = f"{category_id}({description})"
+            
+            color = self.colors.get(class_id, (255, 255, 255))
+            
+            if DEBUG_WINDOW:
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                cv2.circle(frame, (center_x, center_y), 5, (0, 255, 0), -1)
+                
+                label = f"{display_text} {confidence:.2f}"
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
+                cv2.rectangle(frame, (x1, y1-th-10), (x1+tw+10, y1), color, -1)
+                cv2.putText(frame, label, (x1+5, y1-5),
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            
+            print(f"检测到物体:")
+            print(f"置信度: {confidence:.2%}")
+            print(f"边界框位置: ({x1}, {y1}), ({x2}, {y2})")
+            print(f"中心点位置: ({center_x}, {center_y})")
+            print("-" * 30)
+            
+            self.serial_manager.send_to_stm32(class_id, center_x, center_y)
+            self.serial_manager.update_garbage_count(display_text)
+        
+        return frame
+
+def create_detector(model_path):
+    """
+    根据模型文件扩展名创建对应的检测器
+    Args:
+        model_path: 模型文件路径
+    Returns:
+        detector: YOLODetector 或 ONNXDetector 实例
+    """
+    import os
+    
+    # 获取文件扩展名
+    file_extension = os.path.splitext(model_path)[1].lower()
+    
+    # 检查文件是否存在
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"模型文件未找到: {model_path}")
+    
+    # 根据扩展名选择检测器
+    if file_extension == '.pt':
+        print(f"使用 PyTorch 模型: {model_path}")
+        try:
+            return YOLODetector(model_path)
+        except Exception as e:
+            raise RuntimeError(f"加载 PyTorch 模型失败: {str(e)}")
+            
+    elif file_extension == '.onnx':
+        print(f"使用 ONNX 模型: {model_path}")
+        try:
+            # 检查是否已安装onnxruntime
+            import importlib
+            if importlib.util.find_spec("onnxruntime") is None:
+                raise ImportError("请先安装 onnxruntime: pip install onnxruntime-gpu 或 pip install onnxruntime")
+            return ONNXDetector(model_path)
+        except Exception as e:
+            raise RuntimeError(f"加载 ONNX 模型失败: {str(e)}")
+            
+    else:
+        raise ValueError(f"不支持的模型格式: {file_extension}，仅支持 .pt 或 .onnx 格式")
 def find_camera():
     """查找可用的摄像头"""
     for index in range(10):
@@ -366,9 +567,13 @@ def main():
     print(device_info)
     print("-" * 30)
     
-    detector = YOLODetector(
-        model_path='best.pt'
-    )
+    # 使用新的创建检测器方法
+    try:
+        model_path = 'best.pt'  # 或 'best.onnx'
+        detector = create_detector(model_path)
+    except Exception as e:
+        print(f"创建检测器失败: {str(e)}")
+        return
     
     cap = find_camera()
     if not cap:
