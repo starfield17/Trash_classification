@@ -16,7 +16,7 @@
 ### 技术特点
 
 1. **检测算法**
-   - 采用 YOLOv8 轻量级模型
+   - 采用 YOLO 系列模型
    - 支持 GPU 加速推理
    - 可配置的置信度阈值
    - 实时目标定位和分类
@@ -73,7 +73,7 @@ conda --version
 ### 3. 配置Python环境
 ```bash
 # 创建环境
-conda create -n trash_classification python=3.10
+conda create -n trash_classification python=3.11
 
 # 激活环境
 conda activate trash_classification
@@ -93,7 +93,7 @@ pip install --upgrade pip
 pip install torch torchvision
 
 # 安装其他依赖
-pip install ultralytics opencv-python numpy
+pip install ultralytics opencv-python numpy scikit-learn
 ```
 
 ### 6. 验证环境
