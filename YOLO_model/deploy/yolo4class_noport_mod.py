@@ -414,7 +414,7 @@ def main():
     print("-" * 30)
     
     try:
-        model_path = 'best.onnx'  # or 'best.onnx'
+        model_path = 'best.pt'  # or 'best.onnx'
         detector = create_detector(model_path)
     except Exception as e:
         print(f"Failed to create detector: {str(e)}")
