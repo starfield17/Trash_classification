@@ -8,20 +8,23 @@ def export_pt_to_onnx(pt_model_path, onnx_path):
     """将PT模型导出为ONNX格式"""
     print(f"Converting {pt_model_path} to ONNX format...")
     
-    # 加载YOLO模型
-    model = YOLO(pt_model_path)
-    
-    # 导出为ONNX
-    success = model.export(format='onnx', 
-                         opset=12,
-                         simplify=True,
-                         path=onnx_path)
-    
-    if success:
-        print(f"Successfully exported ONNX model to {onnx_path}")
-        return True
-    else:
-        print("Failed to export ONNX model")
+    try:
+        # 使用正确的YOLO命令行语法
+        from ultralytics import YOLO
+        model = YOLO(pt_model_path)
+        model.export(format='onnx', opset=12, simplify=True)
+        
+        # 重命名导出的模型
+        default_onnx = pt_model_path.replace('.pt', '.onnx')
+        if os.path.exists(default_onnx):
+            os.rename(default_onnx, onnx_path)
+            print(f"Successfully exported ONNX model to {onnx_path}")
+            return True
+        else:
+            print("ONNX file not found after export")
+            return False
+    except Exception as e:
+        print(f"Export failed: {str(e)}")
         return False
 
 def convert_onnx_to_rknn(onnx_path, rknn_path, target_platform='rk3588'):
@@ -35,10 +38,10 @@ def convert_onnx_to_rknn(onnx_path, rknn_path, target_platform='rk3588'):
     print('=> Config RKNN model')
     ret = rknn.config(mean_values=[[0, 0, 0]], 
                      std_values=[[255, 255, 255]],
-                     target_platform=target_platform)
-    if ret != 0:
-        print('RKNN model config failed')
-        return False
+                     target_platform=target_platform,
+                     quantized_dtype="w16a16i_dfp",
+                     quantized_algorithm="normal",
+                     optimization_level=3)
     
     # 加载ONNX模型
     print('=> Loading ONNX model')
@@ -77,28 +80,39 @@ def prepare_quantization_dataset(dataset_txt_path='./dataset.txt', num_images=10
         
     # 获取所有训练图片
     image_files = [f for f in os.listdir(train_images_dir) 
-                  if f.endswith(('.jpg', '.jpeg', '.png'))]
+                  if f.lower().endswith(('.jpg', '.jpeg', '.png')) and ' ' not in f]
     
     if len(image_files) == 0:
-        print("Error: No images found in training directory")
+        print("Error: No images found in training directory without spaces")
         return False
     
     # 选择指定数量的图片用于量化
     selected_images = image_files[:min(num_images, len(image_files))]
     
+    # 获取绝对路径
+    abs_train_dir = os.path.abspath(train_images_dir)
+    
     # 创建数据集列表文件
     with open(dataset_txt_path, 'w') as f:
         for image in selected_images:
-            f.write(os.path.join(train_images_dir, image) + '\n')
+            abs_image_path = os.path.join(abs_train_dir, image)
+            if os.path.exists(abs_image_path) and os.path.isfile(abs_image_path):  # 验证文件存在且是文件
+                f.write(abs_image_path + '\n')
+                print(f"Added to dataset: {abs_image_path}")  # 调试信息
+            else:
+                print(f"Skipped invalid file: {abs_image_path}")  # 调试信息
     
     print(f'Created quantization dataset list with {len(selected_images)} images')
     return True
 
 def main():
+    # 获取当前工作目录的绝对路径
+    current_dir = os.path.abspath(os.getcwd())
+    
     # 配置路径
-    pt_model_path = 'runs/train/weights/best.pt'  # 训练好的PT模型路径
-    onnx_path = 'model.onnx'  # 中间ONNX模型路径
-    rknn_path = 'model.rknn'  # 最终RKNN模型路径
+    pt_model_path = os.path.join(current_dir, 'runs', 'train', 'weights', 'best.pt')
+    onnx_path = os.path.join(current_dir, 'model.onnx')
+    rknn_path = os.path.join(current_dir, 'model.rknn')
     
     try:
         # 1. 准备量化数据集
