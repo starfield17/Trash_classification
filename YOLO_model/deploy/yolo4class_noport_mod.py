@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 # Global control variables
-DEBUG_WINDOW = True
+DEBUG_WINDOW = False
 CONF_THRESHOLD = 0.9  # Confidence threshold
 CAMERA_WIDTH = 1280   # Camera width
 CAMERA_HEIGHT = 720   # Camera height
