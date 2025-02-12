@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 
+
 select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
 
@@ -432,7 +433,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             - 'focus_speed': 注重训练速度时的优化配置
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
-    num_workers = max(1, os.cpu_count() - 1) if os.cpu_count() is not None else 4
+    num_workers = max(1, os.cpu_count() - 2)
     
     # 基础训练参数
     train_args = {
@@ -463,6 +464,8 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'overlap_mask': False,                   # 是否使用重叠掩码
         'multi_scale': True,                     # 是否启用多尺度训练
         'single_cls': False,                     # 是否将所有类别视为单一类别
+        'rect': True,
+        'cache': False
     }
     
     # 根据配置模式更新训练参数
@@ -482,7 +485,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         })
     elif config == 'focus_accuracy':
         train_args.update({
-            'imgsz': 832,                        # 1024也可
+            'imgsz': 640,                        # 1024也可
             'box': 6.0,                         
             'cls': 3.0,                          
             'dfl': 2.5,            
