@@ -421,8 +421,8 @@ def augment_validation_set(num_augmentations=2):
 
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default'):
     """
-    改进的YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
-    
+    YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
+    支持CPU和GPU训练。
     Args:
         use_augmentation (bool): 是否启用数据增强，默认为False。
         use_mixed_precision (bool): 是否启用混合精度训练，默认为False。
@@ -435,15 +435,25 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
     num_workers = max(1, min(os.cpu_count() - 2, 8))
+    device = 'cpu'
+    if torch.cuda.is_available():
+        device = '0'
+    if device == 'cpu':
+        batch_size = 4  # 降低batch size
+        workers = max(1, min(os.cpu_count() - 1, 4))  # 减少worker数量
+        use_mixed_precision = False  # CPU不支持混合精度训练
+    else:
+        batch_size = 10  # 原始batch size
+        workers = num_workers
     
     # 基础训练参数
     train_args = {
         'data': 'data.yaml',                     # 数据集配置文件路径
         'epochs': 120,                           # 训练的总轮数
         'imgsz': 640,                            # 输入图像的尺寸
-        'batch': 10,                             # 每个批次的样本数量
-        'workers': num_workers,                  # 用于数据加载的工作线程数
-        'device': '0',                           # 训练所使用的设备（如GPU 0）
+        'batch': batch_size,                     # 根据设备调整的批次大小
+        'workers': workers,                      # 根据设备调整的工作线程数
+        'device': device,                        # 自动选择的训练设备
         'patience': 15,                          # 提前停止的容忍轮数
         'save_period': 5,                        # 每隔多少轮保存一次模型
         'exist_ok': True,                        # 如果结果目录存在，是否覆盖
@@ -472,32 +482,33 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
     # 根据配置模式更新训练参数
     if config == 'large_dataset':
         train_args.update({
-            'batch': 32,
+            'batch': 32 if device == '0' else 4,  # GPU使用32，CPU使用4
             'lr0': 0.001,
             'epochs': 150,
             'patience': 30
         })
     elif config == 'small_dataset':
         train_args.update({
-            'batch': 16,
+            'batch': 16 if device == '0' else 4,  # GPU使用16，CPU使用4
             'lr0': 0.0001,
             'weight_decay': 0.001,
             'warmup_epochs': 15
         })
     elif config == 'focus_accuracy':
         train_args.update({
-            'imgsz': 640,                        # 1024也可
-            'box': 6.0,                         
-            'cls': 3.0,                          
-            'dfl': 2.5,            
-            'patience': 100
+            'imgsz': 640,
+            'box': 6.0,
+            'cls': 3.0,
+            'dfl': 2.5,
+            'patience': 100,
+            'batch': 16 if device == '0' else 4  # GPU使用16，CPU使用4
         })
     elif config == 'focus_speed':
         train_args.update({
             'imgsz': 512,
             'epochs': 150,
             'patience': 30,
-            'batch': 48                          # 如果GPU内存允许
+            'batch': 48 if device == '0' else 4  # GPU使用48，CPU使用4
         })
     elif config != 'default':
         print(f"警告: 未识别的配置模式 '{config}'，将使用默认配置。")
@@ -518,29 +529,23 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             'copy_paste': 0,                     # 复制粘贴增强的比例
         }
         train_args.update(augmentation_args)
-    else:
-        train_args.update({
-            'augment': False,                    # 禁用数据增强
-            'degrees': 0.0,                      # 禁用旋转
-            'scale': 0.0,                        # 禁用缩放
-            'fliplr': 0.0,                       # 禁用水平翻转
-            'flipud': 0.0,                       # 禁用垂直翻转
-            'hsv_h': 0.0,                        # 禁用色调调整
-            'hsv_s': 0.0,                        # 禁用饱和度调整
-            'hsv_v': 0.0,                        # 禁用明度调整
-            'mosaic': 0,                         # 禁用马赛克增强
-            'mixup': 0,                          # 禁用混合增强
-            'copy_paste': 0,                     # 禁用复制粘贴增强
-        })
 
-    # 启用混合精度训练
-    if use_mixed_precision:
+    # 启用混合精度训练（仅在GPU上）
+    if use_mixed_precision and device == '0':
         train_args.update({
             'half': True
+        })
+    else:
+        train_args.update({
+            'half': False
         })
     
     # 开始训练并传入所有参数
     try:
+        print(f"\n使用设备: {'GPU' if device == '0' else 'CPU'}")
+        print(f"Batch size: {train_args['batch']}")
+        print(f"混合精度训练: {'启用' if train_args['half'] else '禁用'}\n")
+        
         results = model.train(**train_args)
         return results
     except Exception as e:
@@ -576,7 +581,6 @@ def main():
         train_yolo(
             use_augmentation=False, 
             use_mixed_precision=True, 
-            config='focus_accuracy',
         )
         
     except Exception as e:
