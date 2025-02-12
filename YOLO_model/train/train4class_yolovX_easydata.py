@@ -8,7 +8,8 @@ import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
-
+import gc
+import torch
 
 select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
@@ -433,7 +434,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             - 'focus_speed': 注重训练速度时的优化配置
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
-    num_workers = max(1, os.cpu_count() - 2)
+    num_workers = max(1, min(os.cpu_count() - 2, 8))
     
     # 基础训练参数
     train_args = {
