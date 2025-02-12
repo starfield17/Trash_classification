@@ -548,13 +548,16 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
 
 def main():
     try:
+        gc.collect()        
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         # 设置数据目录
         data_dir = datapath
         
         # 1. 检查数据集
         print("Step 1: Checking dataset...")
         valid_pairs = check_and_clean_dataset(data_dir)
-        
+        gc.collect()
         # 2. 创建配置文件
         print("\nStep 2: Creating data.yaml...")
         create_data_yaml()
@@ -562,8 +565,8 @@ def main():
         # 3. 准备数据集
         print("\nStep 3: Preparing dataset...")
         train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs)
-        
-        if val_size < 5:  # 降低最小验证集大小要求
+        gc.collect()
+        if val_size < 5:
             raise ValueError(f"Validation set too small ({val_size} images). Need at least 5 images.")
             
         # 4. 开始训练，启用混合精度训练和提前停止机制
