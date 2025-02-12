@@ -466,7 +466,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
         'multi_scale': True,                     # 是否启用多尺度训练
         'single_cls': False,                     # 是否将所有类别视为单一类别
         'rect': True,
-        'cache': 'ram'
+        'cache': True
     }
     
     # 根据配置模式更新训练参数
