@@ -4,7 +4,6 @@ import os
 import json
 from sklearn.model_selection import train_test_split
 import shutil
-import albumentations as A
 import cv2
 import numpy as np
 from pathlib import Path
@@ -276,56 +275,6 @@ def convert_labels(json_file, txt_file):
         print(f"Error processing {json_file}: {e}")
         return False
 
-
-def create_augmentation_pipeline():
-    """创建更温和的数据增强pipeline"""
-    return A.Compose([
-        # 亮度和对比度调整(更温和)
-        A.RandomBrightnessContrast(
-            brightness_limit=0.1,  # 降低范围
-            contrast_limit=0.1,    # 降低范围
-            p=0.2
-        ),
-        # 色调和饱和度调整(更温和)
-        A.HueSaturationValue(
-            hue_shift_limit=10,    # 降低色调变化
-            sat_shift_limit=15,    # 降低饱和度变化
-            val_shift_limit=10,    # 降低明度变化
-            p=0.2
-        ),
-        # CLAHE(更温和)
-        A.CLAHE(
-            clip_limit=2.0,
-            tile_grid_size=(8, 8),
-            p=0.2
-        ),
-        # 水平翻转
-        A.HorizontalFlip(p=0.5),
-        # 轻微的位移、缩放和旋转
-        A.ShiftScaleRotate(
-            shift_limit=0.0625,    # 减小位移范围
-            scale_limit=0.1,       # 减小缩放范围
-            rotate_limit=5,        # 减小旋转角度
-            interpolation=cv2.INTER_LINEAR,
-            border_mode=cv2.BORDER_CONSTANT,
-            value=0,
-            p=0.2
-        ),
-        # 降噪和模糊(更温和)
-        A.OneOf([
-            A.GaussNoise(var_limit=(5.0, 15.0), p=1),    # 降低噪声强度
-            A.GaussianBlur(blur_limit=3, p=1),           # 降低模糊程度
-            A.MedianBlur(blur_limit=3, p=1)              # 保持小的模糊核
-        ], p=0.1)
-    ], bbox_params=A.BboxParams(
-        format='yolo',
-        label_fields=['class_labels'],
-        min_visibility=0.3,    # 添加最小可见性阈值
-        check_each_transform=True  # 检查每次转换是否有效
-    ))
-
-
-
 def load_yolo_bbox(txt_path):
     """加载YOLO格式的边界框"""
     bboxes = []
@@ -352,72 +301,6 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
             x_center, y_center, width, height = bbox
             f.write(f"{class_label} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
 
-def augment_validation_set(num_augmentations=2):
-    """对验证集进行温和的数据增强"""
-    print("\nAugmenting validation set...")
-    val_images_dir = os.path.join('val', 'images')
-    val_labels_dir = os.path.join('val', 'labels')
-    aug_images_dir = os.path.join('val_augmented', 'images')
-    aug_labels_dir = os.path.join('val_augmented', 'labels')
-    
-    os.makedirs(aug_images_dir, exist_ok=True)
-    os.makedirs(aug_labels_dir, exist_ok=True)
-    
-    # 复制原始文件
-    for f in os.listdir(val_images_dir):
-        shutil.copy2(
-            os.path.join(val_images_dir, f),
-            os.path.join(aug_images_dir, f)
-        )
-    for f in os.listdir(val_labels_dir):
-        shutil.copy2(
-            os.path.join(val_labels_dir, f),
-            os.path.join(aug_labels_dir, f)
-        )
-    
-    transform = create_augmentation_pipeline()
-    image_files = [f for f in os.listdir(val_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))]
-    
-    for img_file in image_files:
-        img_path = os.path.join(val_images_dir, img_file)
-        label_path = os.path.join(val_labels_dir, os.path.splitext(img_file)[0] + '.txt')
-        
-        image = cv2.imread(img_path)
-        if image is None:
-            continue
-            
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        bboxes, class_labels = load_yolo_bbox(label_path)
-        
-        if not bboxes:
-            continue
-        
-        for i in range(num_augmentations):
-            try:
-                augmented = transform(
-                    image=image,
-                    bboxes=bboxes,
-                    class_labels=class_labels
-                )
-                
-                aug_img_name = f"{os.path.splitext(img_file)[0]}_aug_{i+1}{os.path.splitext(img_file)[1]}"
-                aug_label_name = f"{os.path.splitext(img_file)[0]}_aug_{i+1}.txt"
-                
-                aug_img = cv2.cvtColor(augmented['image'], cv2.COLOR_RGB2BGR)
-                cv2.imwrite(os.path.join(aug_images_dir, aug_img_name), aug_img)
-                
-                save_yolo_bbox(
-                    augmented['bboxes'],
-                    augmented['class_labels'],
-                    os.path.join(aug_labels_dir, aug_label_name)
-                )
-                
-            except Exception as e:
-                print(f"Error in augmentation: {str(e)}")
-                continue
-    
-    total_images = len([f for f in os.listdir(aug_images_dir) if f.endswith(('.jpg', '.jpeg', '.png'))])
-    print(f"Augmented validation set contains {total_images} images")
 
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config='default'):
     """
