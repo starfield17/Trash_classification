@@ -93,7 +93,7 @@ pip install --upgrade pip
 pip install torch torchvision
 
 # 安装其他依赖
-pip install ultralytics opencv-python numpy scikit-learn albumentations
+pip install ultralytics opencv-python numpy scikit-learn
 ```
 
 ### 6. 验证环境
