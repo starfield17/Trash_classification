@@ -1,7 +1,17 @@
-import yaml
-import os
 ''' add path of ttf font '''
-os.environ['FONT_PATH'] = './Arial.Unicode.ttf'
+import os
+import sys
+from pathlib import Path
+font_path = Path(__file__).parent / 'Arial.Unicode.ttf'
+if not font_path.exists():
+    raise FileNotFoundError(f"Arial.Unicode.ttf not exist : {font_path}")
+os.environ['FONT_PATH'] = str(font_path)
+def check_font(font='Arial.Unicode.ttf'):
+    return str(font_path)
+import ultralytics.utils.checks
+ultralytics.utils.checks.check_font = check_font
+from ultralytics import YOLO
+import yaml
 import json
 from sklearn.model_selection import train_test_split
 import shutil
@@ -10,7 +20,7 @@ import numpy as np
 from pathlib import Path
 import gc
 import torch
-from ultralytics import YOLO
+
 select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
 
