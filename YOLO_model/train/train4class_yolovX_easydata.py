@@ -1,6 +1,7 @@
-from ultralytics import YOLO
 import yaml
 import os
+''' add path of ttf font '''
+os.environ['FONT_PATH'] = './Arial.Unicode.ttf'
 import json
 from sklearn.model_selection import train_test_split
 import shutil
@@ -9,7 +10,7 @@ import numpy as np
 from pathlib import Path
 import gc
 import torch
-
+from ultralytics import YOLO
 select_model='yolo11n.pt'#选择的模型,默认为yolo11n,可以更改
 datapath='./label'  # 根据实际情况修改
 
