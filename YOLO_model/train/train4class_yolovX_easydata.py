@@ -176,7 +176,7 @@ def convert_bbox_to_yolo(bbox, img_width, img_height):
     
     return x_center, y_center, width, height
 def convert_labels(json_file, txt_file):
-    """转换标签文件 - 直接转换为四大类"""
+    """转换为四大类"""
     try:
         if not os.path.exists(json_file):
             print(f"Warning: JSON file not found: {json_file}")
@@ -412,7 +412,23 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config='defaul
             'copy_paste': 0,                     # 复制粘贴增强的比例
         }
         train_args.update(augmentation_args)
-
+    else:
+        # 强制关闭所有数据增强
+        no_augment_args = {
+            'augment': False,                    # 关闭数据增强
+            'degrees': 0.0,                      # 禁用旋转
+            'scale': 0.0,                        # 禁用缩放
+            'fliplr': 0.0,                       # 禁用水平翻转
+            'flipud': 0.0,                       # 禁用垂直翻转
+            'hsv_h': 0.0,                        # 禁用色调调整
+            'hsv_s': 0.0,                        # 禁用饱和度调整
+            'hsv_v': 0.0,                        # 禁用明度调整
+            'mosaic': 0,                         # 禁用马赛克
+            'mixup': 0,                          # 禁用mixup
+            'copy_paste': 0,                     # 禁用复制粘贴
+        }
+        train_args.update(no_augment_args)
+        
     # 启用混合精度训练（仅在GPU上）
     if use_mixed_precision and device == '0':
         train_args.update({
@@ -440,9 +456,7 @@ def main():
         gc.collect()        
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        # 设置数据目录
         data_dir = datapath
-        
         # 1. 检查数据集
         print("Step 1: Checking dataset...")
         valid_pairs = check_and_clean_dataset(data_dir)
@@ -460,16 +474,14 @@ def main():
             
         # 4. 开始训练，启用混合精度训练和提前停止机制
         print("\nStep 4: Starting training with mixed precision...")
-        # 设置较高的目标性能指标作为提前停止条件
         train_yolo(
             use_augmentation=False, 
             use_mixed_precision=True, 
+            config='focus_accuracy'
         )
         
     except Exception as e:
         print(f"Error during execution: {str(e)}")
         raise
-
-
 if __name__ == "__main__":
     main()
