@@ -40,27 +40,38 @@ class SerialManager:
         self.is_running = True
         self.last_stm32_send_time = 0
         self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
-        self.current_detections = []  # 添加临时列表存储当前帧的检测结果
+        
+        # 当前帧检测结果
+        self.current_detections = []
+        
+        # 串口发送队列相关
+        self.send_queue = []
+        self.queue_lock = threading.Lock()
+        self.MAX_QUEUE_SIZE = 50  # 队列最大长度
+        
         # 垃圾计数和记录相关
-        self.garbage_count = 0  # 垃圾计数器
-        self.detected_items = []  # 存储检测到的垃圾记录
+        self.garbage_count = 0
+        self.detected_items = []
         
         # 防重复计数和稳定性检测相关
-        self.last_count_time = 0  # 上次计数的时间
-        self.COUNT_COOLDOWN = 5.0  # 计数冷却时间（秒）
-        self.is_counting_locked = False  # 计数锁定状态
-        self.last_detected_type = None  # 上次检测到的垃圾类型
+        self.last_count_time = 0
+        self.COUNT_COOLDOWN = 5.0
+        self.is_counting_locked = False
+        self.last_detected_type = None
         
-        # 稳定性检测相关(当前物体)
-        self.current_detection = None  # 当前正在检测的物体类型
-        self.detection_start_time = 0  # 开始检测的时间
-        self.STABILITY_THRESHOLD = 1.0  # 稳定识别所需时间（秒）
-        self.stable_detection = False  # 是否已经稳定识别
-        self.detection_lost_time = 0  # 丢失检测的时间
-        self.DETECTION_RESET_TIME = 0.5  # 检测重置时间（秒）
+        # 稳定性检测相关
+        self.current_detection = None
+        self.detection_start_time = 0
+        self.STABILITY_THRESHOLD = 1.0
+        self.stable_detection = False
+        self.detection_lost_time = 0
+        self.DETECTION_RESET_TIME = 0.5
+        
+        # 分类映射
         waste_classifier = WasteClassifier()
         self.zero_mapping = max(waste_classifier.class_names.keys()) + 1
         print(f"类别0将被映射到: {self.zero_mapping}")
+        
         # 初始化STM32串口
         if ENABLE_SERIAL:
             try:
@@ -71,67 +82,16 @@ class SerialManager:
                     write_timeout=0.1
                 )
                 print(f"STM32串口已初始化: {STM32_PORT}")
+                
+                # 启动队列处理线程
+                self.queue_thread = threading.Thread(target=self.queue_processor_thread)
+                self.queue_thread.daemon = True
+                self.queue_thread.start()
+                print("串口发送队列处理线程已启动")
             except Exception as e:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
-
-'''用不到'''
-    #     # 启动数据接收线程
-    #     if self.stm32_port:
-    #         self.receive_thread = threading.Thread(target=self.receive_stm32_data)
-    #         self.receive_thread.daemon = True
-    #         self.receive_thread.start()
-
-    # def receive_stm32_data(self):
-    #     """接收STM32数据的线程函数"""
-    #     buffer_size = 10240  # 设置合理的缓冲区大小
-        
-    #     while self.is_running and self.stm32_port and self.stm32_port.is_open:
-    #         try:
-    #             # 检查串口是否有数据可读
-    #             if self.stm32_port.in_waiting > 0:
-    #                 # 读取数据，限制读取大小
-    #                 data = self.stm32_port.read(min(self.stm32_port.in_waiting, buffer_size))
-                    
-    #                 if data:
-    #                     try:
-    #                         # 尝试解码数据（去除无效字符）
-    #                         decoded_data = data.decode('utf-8', errors='replace').strip()
-    #                         # 过滤掉全是 null 字符或 0xFF 的数据
-    #                         if any(c not in ['\x00', '\xff'] for c in decoded_data):
-    #                             # 将数据转换为十六进制字符串
-    #                             hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
-    #                             print(f"接收到的原始数据: {hex_data}")
-    #                             print(f"解码后的数据: {decoded_data}")
-    #                     except UnicodeDecodeError as e:
-    #                         hex_data = ' '.join(f'0x{byte:02X}' for byte in data)
-    #                         print(f"数据解码错误: {str(e)}")
-    #                         print(f"原始数据: {hex_data}")
-                    
-    #                 # 清理缓冲区
-    #                 self.stm32_port.reset_input_buffer()
-    #             time.sleep(0.01)
-                
-    #         except serial.SerialException as e:
-    #             print(f"串口通信错误: {str(e)}")
-    #             # 尝试重新打开串口
-    #             try:
-    #                 if self.stm32_port.is_open:
-    #                     self.stm32_port.close()
-    #                 time.sleep(1)  # 等待一秒后重试
-    #                 self.stm32_port.open()
-    #                 print("串口重新打开成功")
-    #             except Exception as reopen_error:
-    #                 print(f"串口重新打开失败: {str(reopen_error)}")
-    #                 break  # 如果重新打开失败，退出循环
-                    
-    #         except Exception as e:
-    #             print(f"其他错误: {str(e)}")
-    #             print(f"错误类型: {type(e).__name__}")
-                    
-    #     print("串口接收线程终止")
-'''用不到'''
-
+    
     def check_detection_stability(self, garbage_type):
         """检查检测的稳定性"""
         current_time = time.time()
@@ -194,60 +154,7 @@ class SerialManager:
         self.last_count_time = time.time()
         self.is_counting_locked = True
         self.last_detected_type = garbage_type
-
-    def send_to_stm32(self, detections=None):
-        """
-        发送多个目标数据到STM32
-        Args:
-            detections: 包含多个目标信息的列表，每个元素为(class_id, center_x, center_y)元组
-        """
-        if not self.stm32_port or not self.stm32_port.is_open:
-            return
-            
-        if not detections:
-            detections = self.current_detections
-            
-        current_time = time.time()
-        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
-            return
-            
-        try:
-            self.stm32_port.reset_input_buffer()
-            self.stm32_port.reset_output_buffer()
-            
-            print("\n----- 串口发送多目标数据 -----")
-            print(f"检测到目标数量: {len(detections)}")
-            
-            for idx, (class_id, center_x, center_y) in enumerate(detections):
-                # 类别ID映射处理
-                if class_id == 0:
-                    class_id = self.zero_mapping
-                    
-                # 坐标缩放
-                x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
-                y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
-                
-                # 组装并发送数据包
-                data = bytes([class_id, x_scaled, y_scaled])
-                self.stm32_port.write(data)
-                self.stm32_port.flush()
-                
-                # 打印每个目标的详细信息
-                print(f"\n目标 {idx + 1}/{len(detections)}:")
-                print(f"发送的原始数据: {' '.join([f'0x{b:02X}' for b in data])}")
-                print(f"分类ID: {class_id if class_id != self.zero_mapping else 0} (0x{class_id:02X})")
-                print(f"原始坐标: X={center_x}, Y={center_y}")
-                print(f"缩放后坐标: X={x_scaled} (0x{x_scaled:02X}), Y={y_scaled} (0x{y_scaled:02X})")
-                
-                # 短暂延时，确保串口数据发送稳定
-                time.sleep(0.01)
-            
-            self.last_stm32_send_time = current_time
-            print(f"\n发送完成，总耗时: {time.time() - current_time:.3f}秒")
-            print("-" * 30)
-            
-        except Exception as e:
-            print(f"串口发送错误: {str(e)}")
+    
     def clear_detections(self):
         """清空当前帧的检测结果"""
         self.current_detections = []
@@ -255,12 +162,158 @@ class SerialManager:
     def add_detection(self, class_id, center_x, center_y):
         """添加新的检测结果到临时列表"""
         self.current_detections.append((class_id, center_x, center_y))
-      
+    
+    def queue_processor_thread(self):
+        """队列处理线程，定期从队列中取出数据发送"""
+        print("队列处理线程已启动")
+        while self.is_running:
+            try:
+                self._process_queue_batch()
+            except Exception as e:
+                print(f"队列处理异常: {str(e)}")
+            
+            # 控制处理频率
+            time.sleep(self.MIN_SEND_INTERVAL / 2)
+    
+    def _process_queue_batch(self):
+        """处理队列中的一批数据"""
+        if not self.stm32_port or not self.stm32_port.is_open:
+            return
+        
+        current_time = time.time()
+        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+            return
+        
+        # 获取一批数据进行处理
+        batch_to_send = None
+        with self.queue_lock:
+            if self.send_queue:
+                # 每次最多取出5个批次数据处理
+                batch_to_send = self.send_queue.pop(0)
+        
+        if not batch_to_send:
+            return
+        
+        try:
+            # 短暂延时确保设备准备就绪
+            self.stm32_port.reset_input_buffer()
+            self.stm32_port.reset_output_buffer()
+            time.sleep(0.01)
+            
+            print("\n----- 串口发送批量数据 -----")
+            print(f"批次ID: {batch_to_send['batch_id']}")
+            print(f"目标数量: {len(batch_to_send['detections'])}")
+            print(f"队列等待时间: {current_time - batch_to_send['timestamp']:.3f}秒")
+            
+            for idx, detection in enumerate(batch_to_send['detections']):
+                class_id, center_x, center_y = detection
+                
+                # 类别ID映射处理
+                if class_id == 0:
+                    mapped_class_id = self.zero_mapping
+                else:
+                    mapped_class_id = class_id
+                
+                # 确保所有值在有效范围内
+                mapped_class_id = min(255, max(0, mapped_class_id))
+                x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
+                y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
+                
+                # 组装并发送数据包
+                data = bytes([mapped_class_id, x_scaled, y_scaled])
+                bytes_written = self.stm32_port.write(data)
+                self.stm32_port.flush()
+                
+                # 每个数据包之间短暂延时
+                time.sleep(0.01)
+                
+                # 打印每个目标的详细信息
+                print(f"\n目标 {idx + 1}/{len(batch_to_send['detections'])}:")
+                print(f"发送的原始数据: {' '.join([f'0x{b:02X}' for b in data])}")
+                print(f"实际写入字节数: {bytes_written}")
+                print(f"分类ID: {class_id} -> {mapped_class_id if class_id == 0 else class_id}")
+                print(f"原始坐标: X={center_x}, Y={center_y}")
+                print(f"缩放后坐标: X={x_scaled} (0x{x_scaled:02X}), Y={y_scaled} (0x{y_scaled:02X})")
+            
+            self.last_stm32_send_time = current_time
+            print(f"\n批次发送完成，总耗时: {time.time() - current_time:.3f}秒")
+            
+            with self.queue_lock:
+                print(f"队列中剩余批次: {len(self.send_queue)}")
+            
+            print("-" * 30)
+            
+        except serial.SerialTimeoutException:
+            print("串口写入超时，将重新入队...")
+            # 超时的批次重新放回队列头部
+            with self.queue_lock:
+                # 增加重试次数
+                retry_count = batch_to_send.get('retry', 0) + 1
+                if retry_count <= 3:  # 最多重试3次
+                    batch_to_send['retry'] = retry_count
+                    # 重新放入队列头部
+                    self.send_queue.insert(0, batch_to_send)
+                    print(f"批次将重试发送，第{retry_count}次尝试")
+                else:
+                    print(f"批次重试次数已达上限，丢弃该批次")
+                    
+        except Exception as e:
+            print(f"串口发送错误: {str(e)}")
+            # 其他错误时也考虑重试
+            with self.queue_lock:
+                retry_count = batch_to_send.get('retry', 0) + 1
+                if retry_count <= 3:
+                    batch_to_send['retry'] = retry_count
+                    self.send_queue.insert(0, batch_to_send)
+                    print(f"错误后重试，第{retry_count}次尝试")
+
+    def send_to_stm32(self, detections=None):
+        """将检测结果添加到发送队列"""
+        if not self.stm32_port or not self.stm32_port.is_open:
+            return False
+        
+        if detections is None:
+            detections = self.current_detections
+        
+        if not detections:
+            return False  # 没有检测结果，直接返回
+        
+        # 创建批次数据
+        batch_data = {
+            'batch_id': int(time.time() * 1000),  # 使用时间戳作为批次ID
+            'timestamp': time.time(),
+            'detections': detections.copy(),  # 复制检测结果避免引用问题
+            'retry': 0  # 初始重试次数为0
+        }
+        
+        # 添加到发送队列
+        with self.queue_lock:
+            if len(self.send_queue) >= self.MAX_QUEUE_SIZE:
+                # 队列满时，保留最新的数据，移除较早的数据
+                excess = len(self.send_queue) - self.MAX_QUEUE_SIZE + 1
+                self.send_queue = self.send_queue[excess:]
+                print(f"警告: 发送队列已满，丢弃{excess}个较早的批次")
+            
+            self.send_queue.append(batch_data)
+            queue_size = len(self.send_queue)
+        
+        print(f"批次已加入队列，当前队列长度: {queue_size}")
+        return True
+
     def cleanup(self):
-        """清理串口资源"""
+        """清理资源"""
         self.is_running = False
+        print("正在清理资源...")
+        
+        # 等待队列处理线程结束
+        if hasattr(self, 'queue_thread') and self.queue_thread.is_alive():
+            self.queue_thread.join(timeout=2.0)
+            print("队列处理线程已终止")
+        
+        # 关闭串口
         if self.stm32_port and self.stm32_port.is_open:
             self.stm32_port.close()
+            print("串口已关闭")
             
 class WasteClassifier:
     def __init__(self):
