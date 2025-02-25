@@ -40,7 +40,6 @@ class SerialManager:
         self.is_running = True
         self.last_stm32_send_time = 0
         self.MIN_SEND_INTERVAL = 0.1  # 最小发送间隔（秒）
-        
         # 垃圾计数和记录相关
         self.garbage_count = 0  # 垃圾计数器
         self.detected_items = []  # 存储检测到的垃圾记录
@@ -61,6 +60,15 @@ class SerialManager:
         waste_classifier = WasteClassifier()
         self.zero_mapping = max(waste_classifier.class_names.keys()) + 1
         print(f"类别0将被映射到: {self.zero_mapping}")
+        #队列
+        self.send_queue = []
+        self.queue_lock = threading.Lock()  # 用于线程安全操作队列
+        if ENABLE_SERIAL and self.stm32_port:
+            self.queue_thread = threading.Thread(target=self.queue_processor_thread)
+            self.queue_thread.daemon = True
+            self.queue_thread.start()
+            print("串口发送队列处理线程已启动")
+            
         # 初始化STM32串口
         if ENABLE_SERIAL:
             try:
@@ -194,55 +202,141 @@ class SerialManager:
         self.last_detected_type = garbage_type
 
     def send_to_stm32(self, class_id, center_x, center_y):
-        """发送数据到STM32"""
+        """发送数据到STM32，使用队列确保数据可靠传输"""
+        if not self.stm32_port or not self.stm32_port.is_open:
+            return False
+        
+        # 确保数据在有效范围内
+        if class_id == 0:
+            mapped_class_id = self.zero_mapping
+        else:
+            mapped_class_id = class_id
+        
+        # 强制限制所有值在0-255范围内
+        mapped_class_id = min(255, max(0, mapped_class_id))
+        x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
+        y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
+        
+        # 添加到发送队列
+        with self.queue_lock:
+            # 限制队列大小，避免内存占用过大
+            if len(self.send_queue) >= 50:
+                # 保留最新的数据，丢弃旧数据
+                self.send_queue = self.send_queue[-49:]
+                print("警告: 发送队列已满，丢弃旧数据")
+            
+            # 将数据添加到队列
+            self.send_queue.append({
+                'class_id': mapped_class_id,
+                'x': x_scaled,
+                'y': y_scaled,
+                'timestamp': time.time(),
+                'orig_x': center_x,
+                'orig_y': center_y,
+                'orig_class': class_id
+            })
+        
+        return True
+    
+    def queue_processor_thread(self):
+        """队列处理线程，定期从队列中取出数据发送"""
+        while self.is_running:
+            try:
+                self._process_send_queue()
+            except Exception as e:
+                print(f"队列处理异常: {str(e)}")
+            
+            # 短暂休眠，控制处理频率
+            time.sleep(self.MIN_SEND_INTERVAL / 2)
+    
+    def _process_send_queue(self):
+        """处理发送队列中的数据"""
         if not self.stm32_port or not self.stm32_port.is_open:
             return
-    
+        
         current_time = time.time()
         if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+            return  # 未到发送间隔，等待下次处理
+        
+        # 从队列中获取一条数据
+        data_to_send = None
+        with self.queue_lock:
+            if self.send_queue:
+                data_to_send = self.send_queue.pop(0)
+        
+        if not data_to_send:
             return
-    
+        
         try:
+            # 发送前的缓冲区准备，添加短暂延时避免设备来不及响应
             self.stm32_port.reset_input_buffer()
             self.stm32_port.reset_output_buffer()
+            time.sleep(0.01)
             
-                    # 如果是0则映射到预先计算的maping值
-            if class_id == 0:
-                class_id = self.zero_mapping  # 使用预先计算的映射值
-            x_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH)))
-            y_scaled = min(MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT)))
-            # 组装数据包：class_id + x坐标 + y坐标
-            data = bytes([class_id, x_scaled, y_scaled])
+            # 组装数据包
+            data = bytes([
+                data_to_send['class_id'],
+                data_to_send['x'],
+                data_to_send['y']
+            ])
+            
             # 发送数据
-            self.stm32_port.write(data)
+            bytes_written = self.stm32_port.write(data)
             self.stm32_port.flush()
             self.last_stm32_send_time = current_time
+            
+            # 记录发送日志
             print("\n----- 串口发送数据详情 -----")
             print(f"发送的原始数据: {' '.join([f'0x{b:02X}' for b in data])}")
-            print(f"数据包总长度: {len(data)} 字节")
+            print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
+            
+            with self.queue_lock:
+                print(f"队列中剩余数据: {len(self.send_queue)}条")
+            
             print("\n--- 分类信息 ---")
-            print(f"原始分类ID: {class_id if class_id != 4 else 0}")  # 显示原始的0而不是转换后的4
-            print(f"发送的分类ID (十进制): {class_id}")
-            print(f"发送的分类ID (十六进制): 0x{class_id:02X}")
+            print(f"原始分类ID: {data_to_send['orig_class']}")
+            print(f"发送的分类ID (十进制): {data_to_send['class_id']}")
+            print(f"发送的分类ID (十六进制): 0x{data_to_send['class_id']:02X}")
+            
             print("\n--- 坐标信息 ---")
-            print(f"原始中心坐标: X={center_x}, Y={center_y}")
+            print(f"原始中心坐标: X={data_to_send['orig_x']}, Y={data_to_send['orig_y']}")
             print(f"缩放比例: X=1:{CAMERA_WIDTH/255:.2f}, Y=1:{CAMERA_HEIGHT/255:.2f}")
-            print(f"缩放后坐标 (十进制): X={x_scaled}, Y={y_scaled}")
-            print(f"缩放后坐标 (十六进制): X=0x{x_scaled:02X}, Y=0x{y_scaled:02X}")
-            print(f"坐标在画面中的相对位置: X={center_x/CAMERA_WIDTH*100:.1f}%, Y={center_y/CAMERA_HEIGHT*100:.1f}%")
+            print(f"缩放后坐标 (十进制): X={data_to_send['x']}, Y={data_to_send['y']}")
+            print(f"缩放后坐标 (十六进制): X=0x{data_to_send['x']:02X}, Y=0x{data_to_send['y']:02X}")
+            print(f"坐标在画面中的相对位置: X={data_to_send['orig_x']/CAMERA_WIDTH*100:.1f}%, Y={data_to_send['orig_y']/CAMERA_HEIGHT*100:.1f}%")
+            
             print("\n--- 时序信息 ---")
-            print(f"距离上次发送的时间: {current_time - self.last_stm32_send_time:.3f}秒")
+            print(f"数据进入队列时间: {data_to_send['timestamp']:.3f}")
+            print(f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒")
             print(f"当前系统时间戳: {current_time:.3f}")
             print("-" * 30)
+            
+        except serial.SerialTimeoutException:
+            print("串口写入超时，可能是设备未响应")
+            # 超时的数据重新放回队列，保持数据不丢失
+            with self.queue_lock:
+                self.send_queue.insert(0, data_to_send)
         except Exception as e:
             print(f"串口发送错误: {str(e)}")
-
+            # 发送失败也考虑重新放回队列
+            with self.queue_lock:
+                # 只在重试次数不超过限制时放回队列
+                retry_count = data_to_send.get('retry', 0) + 1
+                if retry_count <= 3:  # 最多重试3次
+                    data_to_send['retry'] = retry_count
+                    self.send_queue.insert(0, data_to_send)
+                    print(f"数据将重试发送，第{retry_count}次尝试")
+    
     def cleanup(self):
         """清理串口资源"""
         self.is_running = False
+        # 等待队列处理线程结束
+        if hasattr(self, 'queue_thread') and self.queue_thread.is_alive():
+            self.queue_thread.join(timeout=1.0)
+        
         if self.stm32_port and self.stm32_port.is_open:
             self.stm32_port.close()
-            
+            print("串口已关闭")
 class WasteClassifier:
     def __init__(self):
         # 分类名称
