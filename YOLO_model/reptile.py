@@ -8,14 +8,16 @@ categories = {
     "鹅卵石": ["cobblestone","pebbles"],
     "砖块（碎的）": ["碎砖"],
     "土豆": ["potato","土豆"]
-    
 }
 
 # 设置每个关键词下载的图片数量
-num_images_per_keyword = 3000  # 每个关键词下载的图片数量，可以根据需要调整
+num_images_per_keyword = 3000  # 
 
-# 创建保存图片的主目录
-output_dir = "yolo_dataset"
+# 获取当前代码文件的目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# 创建保存图片的主目录（相对当前目录）
+output_dir = os.path.join(current_dir, "yolo_dataset")
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
