@@ -82,7 +82,7 @@ class SerialManager:
             except Exception as e:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
-'''用不到'''
+                
     #     # 启动数据接收线程
     #     if self.stm32_port:
     #         self.receive_thread = threading.Thread(target=self.receive_stm32_data)
@@ -137,7 +137,7 @@ class SerialManager:
     #             print(f"错误类型: {type(e).__name__}")
                     
     #     print("串口接收线程终止")
-'''用不到'''
+    
     def check_detection_stability(self, garbage_type):
         """检查检测的稳定性"""
         current_time = time.time()
