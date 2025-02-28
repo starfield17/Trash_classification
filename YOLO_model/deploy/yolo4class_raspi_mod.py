@@ -12,6 +12,7 @@ import sys
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
+model_path = 'best.pt'
 # 串口配置
 # 可用串口对应关系(raspberrypi)：
 # 串口名称  | TX引脚  | RX引脚
@@ -60,28 +61,42 @@ class SerialManager:
         waste_classifier = WasteClassifier()
         self.zero_mapping = max(waste_classifier.class_names.keys()) + 1
         print(f"类别0将被映射到: {self.zero_mapping}")
+        
         #队列
         self.send_queue = []
         self.queue_lock = threading.Lock()  # 用于线程安全操作队列
-        if ENABLE_SERIAL and self.stm32_port:
-            self.queue_thread = threading.Thread(target=self.queue_processor_thread)
-            self.queue_thread.daemon = True
-            self.queue_thread.start()
-            print("串口发送队列处理线程已启动")
-            
+        
         # 初始化STM32串口
         if ENABLE_SERIAL:
             try:
                 self.stm32_port = serial.Serial(
                     STM32_PORT, 
                     STM32_BAUD, 
-                    timeout=0.1,
-                    write_timeout=0.1
+                    timeout=0.5,  # 增加超时时间
+                    write_timeout=0.5
                 )
                 print(f"STM32串口已初始化: {STM32_PORT}")
+                
+                # 确认串口是否真的打开
+                if self.stm32_port.is_open:
+                    print(f"串口已成功打开: {self.stm32_port.name}")
+                else:
+                    print(f"串口未打开,请检查{STM32_PORT}是否可用")
+                    
             except Exception as e:
                 print(f"STM32串口初始化失败: {str(e)}")
                 self.stm32_port = None
+        
+        # 改进: 确保队列线程只在串口可用时才启动，并使用单独的标志跟踪
+        self.queue_thread_running = False
+        if ENABLE_SERIAL and self.stm32_port and self.stm32_port.is_open:
+            self.queue_thread = threading.Thread(target=self.queue_processor_thread)
+            self.queue_thread.daemon = True
+            self.queue_thread.start()
+            self.queue_thread_running = True
+            print("串口发送队列处理线程已启动")
+        else:
+            print("警告: 串口未初始化或未打开，队列处理线程未启动")
                 
     #     # 启动数据接收线程
     #     if self.stm32_port:
@@ -203,8 +218,18 @@ class SerialManager:
 
     def send_to_stm32(self, class_id, center_x, center_y):
         """发送数据到STM32，使用队列确保数据可靠传输"""
+        # 检查串口和队列线程状态
         if not self.stm32_port or not self.stm32_port.is_open:
+            print("警告: 串口未初始化或未打开，无法发送数据")
             return False
+        
+        if not self.queue_thread_running:
+            print("警告: 队列处理线程未运行，重新启动线程")
+            self.queue_thread = threading.Thread(target=self.queue_processor_thread)
+            self.queue_thread.daemon = True
+            self.queue_thread.start()
+            self.queue_thread_running = True
+            print("串口发送队列处理线程已重新启动")
         
         # 确保数据在有效范围内
         if class_id == 0:
@@ -220,9 +245,9 @@ class SerialManager:
         # 添加到发送队列
         with self.queue_lock:
             # 限制队列大小，避免内存占用过大
-            if len(self.send_queue) >= 50:
+            if len(self.send_queue) >= 10:  # 减小队列大小上限，避免积压太多
                 # 保留最新的数据，丢弃旧数据
-                self.send_queue = self.send_queue[-49:]
+                self.send_queue = self.send_queue[-9:]
                 print("警告: 发送队列已满，丢弃旧数据")
             
             # 将数据添加到队列
@@ -237,6 +262,7 @@ class SerialManager:
             })
         
         return True
+
     
     def queue_processor_thread(self):
         """队列处理线程，定期从队列中取出数据发送"""
@@ -251,8 +277,18 @@ class SerialManager:
     
     def _process_send_queue(self):
         """处理发送队列中的数据"""
-        if not self.stm32_port or not self.stm32_port.is_open:
+        if not self.stm32_port:
+            print("错误: 串口对象不存在")
             return
+            
+        if not self.stm32_port.is_open:
+            try:
+                print("尝试重新打开串口...")
+                self.stm32_port.open()
+                print("串口重新打开成功")
+            except Exception as e:
+                print(f"串口重新打开失败: {str(e)}")
+                return
         
         current_time = time.time()
         if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
@@ -268,49 +304,33 @@ class SerialManager:
             return
         
         try:
-            # 发送前的缓冲区准备，添加短暂延时避免设备来不及响应
-            self.stm32_port.reset_input_buffer()
-            self.stm32_port.reset_output_buffer()
-            time.sleep(0.01)
-            
-            # 组装数据包
+            # 组装数据包并添加包头标识
             data = bytes([
                 data_to_send['class_id'],
                 data_to_send['x'],
-                data_to_send['y']
+                data_to_send['y'],
             ])
             
             # 发送数据
             bytes_written = self.stm32_port.write(data)
             self.stm32_port.flush()
             self.last_stm32_send_time = current_time
-            
-            # 记录发送日志
-            print("\n----- 串口发送数据详情 -----")
-            print(f"发送的原始数据: {' '.join([f'0x{b:02X}' for b in data])}")
-            print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
-            
-            with self.queue_lock:
-                print(f"队列中剩余数据: {len(self.send_queue)}条")
-            
-            print("\n--- 分类信息 ---")
-            print(f"原始分类ID: {data_to_send['orig_class']}")
-            print(f"发送的分类ID (十进制): {data_to_send['class_id']}")
-            print(f"发送的分类ID (十六进制): 0x{data_to_send['class_id']:02X}")
-            
-            print("\n--- 坐标信息 ---")
-            print(f"原始中心坐标: X={data_to_send['orig_x']}, Y={data_to_send['orig_y']}")
-            print(f"缩放比例: X=1:{CAMERA_WIDTH/255:.2f}, Y=1:{CAMERA_HEIGHT/255:.2f}")
-            print(f"缩放后坐标 (十进制): X={data_to_send['x']}, Y={data_to_send['y']}")
-            print(f"缩放后坐标 (十六进制): X=0x{data_to_send['x']:02X}, Y=0x{data_to_send['y']:02X}")
-            print(f"坐标在画面中的相对位置: X={data_to_send['orig_x']/CAMERA_WIDTH*100:.1f}%, Y={data_to_send['orig_y']/CAMERA_HEIGHT*100:.1f}%")
-            
-            print("\n--- 时序信息 ---")
-            print(f"数据进入队列时间: {data_to_send['timestamp']:.3f}")
-            print(f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒")
-            print(f"当前系统时间戳: {current_time:.3f}")
-            print("-" * 30)
-            
+            if DEBUG_WINDOW:  # 使用同样的DEBUG_WINDOW作为调试标志
+                print("\n----- 串口发送详细数据 [DEBUG] -----")
+                print(f"十六进制数据: {' '.join([f'0x{b:02X}' for b in data])}")
+                
+                # 添加更直观的原始数据包展示
+                print("原始数据包结构:")
+                print(f"  [0] 0x{data[0]:02X} - 类别ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})")
+                print(f"  [1] 0x{data[1]:02X} - X坐标 ({data_to_send['orig_x']} -> {data_to_send['x']})")
+                print(f"  [2] 0x{data[2]:02X} - Y坐标 ({data_to_send['orig_y']} -> {data_to_send['y']})")
+                print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
+                print(f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)")
+                print(f"原始坐标: ({data_to_send['orig_x']}, {data_to_send['orig_y']}) -> 缩放后: (0x{data_to_send['x']:02X}, 0x{data_to_send['y']:02X})")
+                print(f"包头标识: 0x{data[0]:02X}, 包尾标识: 0x{data[-1]:02X}")
+                print(f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒")
+                print("-" * 50)
+                
         except serial.SerialTimeoutException:
             print("串口写入超时，可能是设备未响应")
             # 超时的数据重新放回队列，保持数据不丢失
@@ -337,6 +357,7 @@ class SerialManager:
         if self.stm32_port and self.stm32_port.is_open:
             self.stm32_port.close()
             print("串口已关闭")
+            
 class WasteClassifier:
     def __init__(self):
         # 分类名称
@@ -398,6 +419,13 @@ class YOLODetector:
             3: (0, 158, 115)      # 其他垃圾 - 绿色
         }
         self.serial_manager = SerialManager()
+        
+        # 添加检测节流相关变量
+        self.last_detection_time = 0
+        self.detection_interval = 0.5  # 每0.5秒最多进行一次串口发送
+        self.last_detection = None
+        self.last_center = None
+        self.min_position_change = 20  # 中心点移动超过20像素才更新
 
     def detect(self, frame):
         results = self.model(frame, conf=CONF_THRESHOLD)
@@ -433,13 +461,36 @@ class YOLODetector:
                     cv2.putText(frame, label, (x1+5, y1-5),
                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
                 
-                print(f"检测到物体:")
-                print(f"置信度: {confidence:.2%}")
-                print(f"边界框位置: ({x1}, {y1}), ({x2}, {y2})")
-                print(f"中心点位置: ({center_x}, {center_y})")
-                print("-" * 30)
-                self.serial_manager.send_to_stm32(class_id, center_x, center_y)
-                self.serial_manager.update_garbage_count(display_text)
+                # 输出检测信息到控制台，但减少冗余输出
+                print(f"检测到物体: {display_text}, 置信度: {confidence:.2%}")
+                
+                # 检查是否需要发送串口数据
+                current_time = time.time()
+                should_send = False
+                
+                # 检查时间间隔
+                if current_time - self.last_detection_time >= self.detection_interval:
+                    should_send = True
+                
+                # 检查物体类型变化
+                elif self.last_detection != class_id:
+                    should_send = True
+                
+                # 检查位置变化是否足够大
+                elif (self.last_center is not None and 
+                      (abs(center_x - self.last_center[0]) > self.min_position_change or 
+                       abs(center_y - self.last_center[1]) > self.min_position_change)):
+                    should_send = True
+                
+                if should_send:
+                    print(f"发送数据 - 中心点: ({center_x}, {center_y})")
+                    self.serial_manager.send_to_stm32(class_id, center_x, center_y)
+                    self.serial_manager.update_garbage_count(display_text)
+                    
+                    # 更新上次检测状态
+                    self.last_detection_time = current_time
+                    self.last_detection = class_id
+                    self.last_center = (center_x, center_y)
         
         return frame
 
@@ -488,7 +539,7 @@ def main():
     
     # 使用新的创建检测器方法
     try:
-        model_path = 'best.pt'  # 或 'best.onnx'
+        global model_path
         detector = create_detector(model_path)
     except Exception as e:
         print(f"创建检测器失败: {str(e)}")
@@ -498,10 +549,6 @@ def main():
     if not cap:
         return
     
-    if DEBUG_WINDOW:
-        window_name = 'YOLOv8检测'
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(window_name, 800, 600)
     
     print("\n系统启动:")
     print("- 摄像头已就绪")
@@ -516,10 +563,10 @@ def main():
             if not ret:
                 print("错误: 无法读取摄像头画面")
                 break
-            
             frame = detector.detect(frame)
             
             if DEBUG_WINDOW:
+                window_name = 'YOLO_detect'
                 cv2.imshow(window_name, frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     print("\n程序正常退出")
