@@ -7,7 +7,7 @@ import threading
 import time
 import subprocess
 import sys
-from toolbox import get_script_directory
+from toolbox import get_script_directory, setup_gpu, find_camera
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
@@ -28,12 +28,6 @@ CAMERA_HEIGHT = 720   # 摄像头高度
 MAX_SERIAL_VALUE = 255  # 串口发送的最大值
 
 
-def setup_gpu():
-    if not torch.cuda.is_available():
-        return False, "未检测到GPU，将使用CPU进行推理"
-    
-    device_name = torch.cuda.get_device_name(0)
-    return True, f"已启用GPU: {device_name}"
 
 
 class SerialManager:
@@ -518,21 +512,30 @@ def create_detector(model_path):
     except Exception as e:
         raise RuntimeError(f"加载 PyTorch 模型失败: {str(e)}")
     
-def find_camera():
-    """查找可用的摄像头"""
-    for index in range(10):
-        cap = cv2.VideoCapture(index)
-        if cap.isOpened():
-            print(f"成功找到可用摄像头，索引为: {index}")
-            return cap
-        cap.release()
-    
-    print("错误: 未找到任何可用的摄像头")
-    return None
+
 
 def main():
     use_gpu, device_info = setup_gpu()
-    print("\n设备信息:")
+    print("\n设备信息:")def get_script_directory():
+    """
+    获取当前脚本所在的文件夹的绝对路径
+    
+    Returns:
+        str: 当前脚本所在文件夹的绝对路径
+    """
+    import os
+    
+    # 获取当前脚本的绝对路径
+    script_path = os.path.abspath(__file__)
+    
+    # 获取脚本所在的目录
+    directory = os.path.dirname(script_path)
+    
+    print(f"脚本目录: {directory}")
+    
+    return directory
+base_dir = get_script_directory()
+
     print(device_info)
     print("-" * 30)
     
