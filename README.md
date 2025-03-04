@@ -388,7 +388,7 @@ CONF_THRESHOLD = 0.9   # 置信度阈值(0-1)
 ### 串口配置
 ```python
 # 串口参数
-STM32_PORT = '/dev/ttyAMA2'  # 串口设备名
+STM32_PORT = '/dev/ttyAMA0'  # 串口设备名
 STM32_BAUD = 115200         # 波特率
 
 # 树莓派串口对应关系：
