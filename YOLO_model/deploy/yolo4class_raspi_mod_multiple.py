@@ -7,7 +7,7 @@ import threading
 import time
 import subprocess
 import sys
-from get_folder_path import get_script_directory
+from toolbox import get_script_directory
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
