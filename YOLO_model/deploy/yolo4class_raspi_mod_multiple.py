@@ -21,7 +21,7 @@ model_path = 'best.pt'
 # ttyAMA3  | GPIO4  | GPIO5
 # ttyAMA4  | GPIO8  | GPIO9
 # ttyAMA5  | GPIO12 | GPIO13
-STM32_PORT = '/dev/ttyS0'  # choose serial if you want
+STM32_PORT = '/dev/ttyUSB0'  # choose serial if you want
 STM32_BAUD = 115200
 CAMERA_WIDTH = 1280   # 摄像头宽度
 CAMERA_HEIGHT = 720   # 摄像头高度
