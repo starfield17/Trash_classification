@@ -34,6 +34,13 @@ def setup_gpu():
     
     device_name = torch.cuda.get_device_name(0)
     return True, f"已启用GPU: {device_name}"
+    
+def get_script_directory():
+    import os
+    script_path = os.path.abspath(__file__)
+    directory = os.path.dirname(script_path)
+    print(f"脚本目录: {directory}")
+    return directory
 
 class SerialManager:
     def __init__(self):
@@ -538,7 +545,9 @@ def main():
     # 使用新的创建检测器方法
     try:
         global model_path
-        detector = create_detector(model_path)
+        base_dir = get_script_directory()
+        final_path=os.path.join(base_dir, model_path)
+        detector = create_detector(final_path)
     except Exception as e:
         print(f"创建检测器失败: {str(e)}")
         return
