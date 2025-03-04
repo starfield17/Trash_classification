@@ -12,7 +12,7 @@ import sys
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
-model_path = 'best.pt'
+model_path = 'yolov8n_e200.pt'
 # 串口配置
 # 可用串口对应关系(raspberrypi)：
 # 串口名称  | TX引脚  | RX引脚
