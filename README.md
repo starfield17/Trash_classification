@@ -129,7 +129,7 @@ pip install torch torchvision ultralytics opencv-python numpy
 pip install pyserial
 ```
 
-### 4. 配置串口权限
+### 4. 配置用户权限
 ```bash
 # 添加用户到 dialout&video 组
 sudo usermod -aG dialout $USER
