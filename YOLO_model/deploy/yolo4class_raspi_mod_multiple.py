@@ -13,6 +13,7 @@ DEBUG_WINDOW = False
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9  # 置信度阈值
 model_path = 'yolov8n_e200.pt'
+
 # 串口配置
 # 可用串口对应关系(raspberrypi)：
 # 串口名称  | TX引脚  | RX引脚
@@ -27,6 +28,12 @@ CAMERA_WIDTH = 1280   # 摄像头宽度
 CAMERA_HEIGHT = 720   # 摄像头高度
 MAX_SERIAL_VALUE = 255  # 串口发送的最大值
 
+def get_script_directory():
+    import os
+    script_path = os.path.abspath(__file__)
+    directory = os.path.dirname(script_path)
+    print(f"脚本目录: {directory}")
+    return directory
 
 def setup_gpu():
     if not torch.cuda.is_available():
@@ -551,7 +558,9 @@ def main():
     # 使用新的创建检测器方法
     try:
         global model_path
-        detector = create_detector(model_path)
+        base_dir = get_script_directory()
+        final_path=os.path.join(base_dir, model_path)
+        detector = create_detector(final_path)
     except Exception as e:
         print(f"创建检测器失败: {str(e)}")
         return
