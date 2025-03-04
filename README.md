@@ -131,13 +131,14 @@ pip install pyserial
 
 ### 4. 配置串口权限
 ```bash
-# 添加用户到dialout组
-sudo usermod -a -G dialout $USER
-
+# 添加用户到 dialout&video 组
+sudo usermod -aG dialout $USER
+sudo usermod -aG video $USER
 # 需重新登录生效
-# 验证串口权限
-ls -l /dev/ttyAMA*
-ls -l /dev/ttyUSB*
+# 验证串口存在
+ls -l /dev/ttyAMA* /dev/ttyUSB*
+# 验证视频设备存在
+ls -l /dev/video*
 ```
 
 ### 5. 验证环境
