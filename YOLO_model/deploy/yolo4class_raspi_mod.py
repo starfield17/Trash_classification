@@ -7,7 +7,8 @@ import threading
 import time
 import subprocess
 import sys
-from toolbox import get_script_directory, setup_gpu, find_camera, WasteClassifier
+from toolbox import get_script_directory, setup_gpu, find_camera
+from toolbox import WasteClassifier
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
