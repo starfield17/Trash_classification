@@ -7,7 +7,7 @@ import threading
 import time
 import subprocess
 import sys
-
+from get_folder_path import get_script_directory
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
@@ -27,13 +27,6 @@ STM32_BAUD = 115200
 CAMERA_WIDTH = 1280   # 摄像头宽度
 CAMERA_HEIGHT = 720   # 摄像头高度
 MAX_SERIAL_VALUE = 255  # 串口发送的最大值
-
-def get_script_directory():
-    import os
-    script_path = os.path.abspath(__file__)
-    directory = os.path.dirname(script_path)
-    print(f"脚本目录: {directory}")
-    return directory
 
 def setup_gpu():
     if not torch.cuda.is_available():
