@@ -238,7 +238,6 @@ class SerialManager:
                 print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
                 print(f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)")
                 print(f"原始坐标: ({data_to_send['orig_x']}, {data_to_send['orig_y']}) -> 缩放后: (0x{data_to_send['x']:02X}, 0x{data_to_send['y']:02X})")
-                print(f"包头标识: 0x{data[0]:02X}, 包尾标识: 0x{data[-1]:02X}")
                 print(f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒")
                 print("-" * 50)
                 
