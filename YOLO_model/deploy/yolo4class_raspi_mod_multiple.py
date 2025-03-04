@@ -7,7 +7,7 @@ import threading
 import time
 import subprocess
 import sys
-from toolbox import get_script_directory
+from toolbox import get_script_directory, setup_gpu, find_camera
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
@@ -27,13 +27,6 @@ STM32_BAUD = 115200
 CAMERA_WIDTH = 1280   # 摄像头宽度
 CAMERA_HEIGHT = 720   # 摄像头高度
 MAX_SERIAL_VALUE = 255  # 串口发送的最大值
-
-def setup_gpu():
-    if not torch.cuda.is_available():
-        return False, "未检测到GPU，将使用CPU进行推理"
-    
-    device_name = torch.cuda.get_device_name(0)
-    return True, f"已启用GPU: {device_name}"
 
 class SerialManager:
     def __init__(self):
@@ -530,17 +523,6 @@ def create_detector(model_path):
     except Exception as e:
         raise RuntimeError(f"加载 PyTorch 模型失败: {str(e)}")
     
-def find_camera():
-    """查找可用的摄像头"""
-    for index in range(10):
-        cap = cv2.VideoCapture(index)
-        if cap.isOpened():
-            print(f"成功找到可用摄像头，索引为: {index}")
-            return cap
-        cap.release()
-    
-    print("错误: 未找到任何可用的摄像头")
-    return None
 
 def main():
     use_gpu, device_info = setup_gpu()
