@@ -7,7 +7,7 @@ import threading
 import time
 import subprocess
 import sys
-
+from get_folder_path import get_script_directory
 # 全局控制变量
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
@@ -34,13 +34,7 @@ def setup_gpu():
     
     device_name = torch.cuda.get_device_name(0)
     return True, f"已启用GPU: {device_name}"
-    
-def get_script_directory():
-    import os
-    script_path = os.path.abspath(__file__)
-    directory = os.path.dirname(script_path)
-    print(f"脚本目录: {directory}")
-    return directory
+
 
 class SerialManager:
     def __init__(self):
