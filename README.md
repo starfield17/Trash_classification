@@ -55,17 +55,13 @@ sudo apt install -y build-essential git cmake python3-dev python3-pip wget
 ### 2. 安装Conda
 ```bash
 # 下载Miniconda
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-
-# 添加执行权限
-chmod +x Miniconda3-latest-Linux-x86_64.sh
-
+#如果是X86_64系统，使用 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh 以下省略对于X86的配置方法，和arm架构配置方法99%相似
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh #官方源
+wget https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-aarch64.sh #清华源
 # 安装
-./Miniconda3-latest-Linux-x86_64.sh
-
+bash ./Miniconda3-latest-Linux-aarch64.sh
 # 初始化
 source ~/.bashrc
-
 # 验证安装
 conda --version
 ```
