@@ -7,6 +7,7 @@ import threading
 import time
 import subprocess
 import sys
+import os
 from toolbox import get_script_directory, setup_gpu, find_camera
 from toolbox import WasteClassifier
 # 全局控制变量
