@@ -21,6 +21,78 @@ def find_camera():
     print("错误: 未找到任何可用的摄像头")
     return None
 
+def crop_frame(frame, target_width=720, target_height=720, mode='center'):
+    """
+    裁切视频帧到指定尺寸
+    
+    参数:
+        frame: 输入的视频帧（numpy数组，OpenCV图像格式）
+        target_width: 目标宽度，默认为720
+        target_height: 目标高度，默认为720
+        mode: 裁切模式，可选值为：
+            - 'center': 从中心裁切（默认）
+            - 'left': 从左侧裁切
+            - 'right': 从右侧裁切
+            - 'top': 从顶部裁切
+            - 'bottom': 从底部裁切
+    
+    返回:
+        裁切后的视频帧
+    """
+    import cv2
+    import numpy as np
+    
+    # 获取原始帧的尺寸
+    frame_height, frame_width = frame.shape[:2]
+    
+    # 检查原始尺寸是否小于目标尺寸
+    if frame_width < target_width or frame_height < target_height:
+        print(f"警告: 原始帧尺寸({frame_width}x{frame_height})小于目标尺寸({target_width}x{target_height})，将进行缩放")
+        # 计算缩放比例
+        scale = max(target_width / frame_width, target_height / frame_height)
+        # 缩放图像
+        frame = cv2.resize(frame, (int(frame_width * scale), int(frame_height * scale)))
+        # 更新尺寸
+        frame_height, frame_width = frame.shape[:2]
+    
+    # 计算裁切区域
+    if mode == 'center':
+        # 从中心裁切
+        start_x = (frame_width - target_width) // 2
+        start_y = (frame_height - target_height) // 2
+    elif mode == 'left':
+        # 从左侧裁切
+        start_x = 0
+        start_y = (frame_height - target_height) // 2
+    elif mode == 'right':
+        # 从右侧裁切
+        start_x = frame_width - target_width
+        start_y = (frame_height - target_height) // 2
+    elif mode == 'top':
+        # 从顶部裁切
+        start_x = (frame_width - target_width) // 2
+        start_y = 0
+    elif mode == 'bottom':
+        # 从底部裁切
+        start_x = (frame_width - target_width) // 2
+        start_y = frame_height - target_height
+    else:
+        raise ValueError(f"不支持的裁切模式: {mode}")
+    
+    # 确保起始坐标不为负
+    start_x = max(0, start_x)
+    start_y = max(0, start_y)
+    
+    # 确保不超出图像边界
+    if start_x + target_width > frame_width:
+        start_x = frame_width - target_width
+    if start_y + target_height > frame_height:
+        start_y = frame_height - target_height
+    
+    # 裁切图像
+    cropped_frame = frame[start_y:start_y+target_height, start_x:start_x+target_width]
+    
+    return cropped_frame
 
 def get_script_directory():
     script_path = os.path.abspath(__file__)
