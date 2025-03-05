@@ -477,26 +477,7 @@ def create_detector(model_path):
 
 def main():
     use_gpu, device_info = setup_gpu()
-    print("\n设备信息:")def get_script_directory():
-    """
-    获取当前脚本所在的文件夹的绝对路径
-    
-    Returns:
-        str: 当前脚本所在文件夹的绝对路径
-    """
-    import os
-    
-    # 获取当前脚本的绝对路径
-    script_path = os.path.abspath(__file__)
-    
-    # 获取脚本所在的目录
-    directory = os.path.dirname(script_path)
-    
-    print(f"脚本目录: {directory}")
-    
-    return directory
-base_dir = get_script_directory()
-
+    print("\n设备信息:")
     print(device_info)
     print("-" * 30)
     
@@ -528,6 +509,7 @@ base_dir = get_script_directory()
             if not ret:
                 print("错误: 无法读取摄像头画面")
                 break
+            
             frame = detector.detect(frame)
             
             if DEBUG_WINDOW:
