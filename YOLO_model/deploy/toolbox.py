@@ -1,7 +1,7 @@
 import os
 import torch
 import cv2
-
+import numpy as np
 
 def setup_gpu():
     if not torch.cuda.is_available():
@@ -39,9 +39,7 @@ def crop_frame(frame, target_width=720, target_height=720, mode='center'):
     返回:
         裁切后的视频帧
     """
-    import cv2
-    import numpy as np
-    
+
     # 获取原始帧的尺寸
     frame_height, frame_width = frame.shape[:2]
     
