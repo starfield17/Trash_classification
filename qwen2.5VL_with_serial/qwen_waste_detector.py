@@ -18,7 +18,7 @@ ENABLE_SERIAL = True  # 是否启用串口通信
 CONF_THRESHOLD = 0.6  # 置信度阈值
 API_CALL_INTERVAL = 0.5  # API调用间隔（秒）
 
-ENABLE_CROP = True  # 是否启用帧裁剪
+ENABLE_CROP = False  # 是否启用帧裁剪
 X_CROP = 720  # 裁剪后的宽度
 Y_CROP = 720  # 裁剪后的高度
 
