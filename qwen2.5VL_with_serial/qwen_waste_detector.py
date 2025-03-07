@@ -18,6 +18,10 @@ ENABLE_SERIAL = True  # 是否启用串口通信
 CONF_THRESHOLD = 0.6  # 置信度阈值
 API_CALL_INTERVAL = 0.5  # API调用间隔（秒）
 
+ENABLE_CROP = True  # 是否启用帧裁剪
+X_CROP = 720  # 裁剪后的宽度
+Y_CROP = 720  # 裁剪后的高度
+
 # 串口配置
 STM32_PORT = "/dev/ttyUSB0"
 STM32_BAUD = 115200
@@ -580,13 +584,13 @@ class QwenDetector:
 
 def main():
     # 初始化检测器
-    api_key = os.getenv("DASHSCOPE_API_KEY")#可以改成 api_key='sk-6e3df2f11a764c0698e7e96a6721e7e5' 这样的结构,将api-key硬编码入代码中
+    api_key = os.getenv("DASHSCOPE_API_KEY")  # 可以改成 api_key='sk-6e3df2f11a764c0698e7e96a6721e7e5' 这样的结构,将api-key硬编码入代码中
     if not api_key:
         print("警告: 未设置DASHSCOPE_API_KEY环境变量，请确保已正确设置API密钥")
         print("可以通过 export DASHSCOPE_API_KEY=your_key 设置环境变量")
         return
         
-    detector = QwenDetector(api_key=api_key) #
+    detector = QwenDetector(api_key=api_key)
     
     # 查找摄像头
     cap = find_camera()
@@ -598,6 +602,7 @@ def main():
     print(f"- 调试窗口: {'开启' if DEBUG_WINDOW else '关闭'}")
     print(f"- 串口输出: {'开启' if ENABLE_SERIAL else '关闭'}")
     print(f"- API调用间隔: {API_CALL_INTERVAL}秒")
+    print(f"- 帧裁剪: {'开启 ({X_CROP}x{Y_CROP})' if ENABLE_CROP else '关闭'}")
     print("- 按 'q' 键退出程序")
     print("-" * 30)
     
@@ -607,6 +612,10 @@ def main():
             if not ret:
                 print("错误: 无法读取摄像头画面")
                 break
+            
+            # 如果启用了裁剪功能，则裁剪帧
+            if ENABLE_CROP:
+                frame = crop_frame(frame, target_width=X_CROP, target_height=Y_CROP, mode='center')
                 
             # 处理当前帧
             processed_frame = detector.detect(frame)
@@ -626,7 +635,6 @@ def main():
         cap.release()
         if DEBUG_WINDOW:
             cv2.destroyAllWindows()
-
 
 if __name__ == "__main__":
     main()
