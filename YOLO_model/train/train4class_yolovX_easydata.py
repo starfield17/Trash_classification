@@ -336,7 +336,7 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
             )
 
 
-def train_yolo(use_augmentation=False, use_mixed_precision=False, config="default"):
+def train_yolo(use_augmentation=False, use_mixed_precision=False, config="default", resume=False):
     """
     YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
     支持CPU和GPU训练。
@@ -395,7 +395,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
         "rect": True,
         "cache": True,
     }
-
+    train_args.update({"resume": resume})
     # 根据配置模式更新训练参数
 
     if config == "large_dataset":
@@ -521,7 +521,10 @@ def main():
 
         print("\nStep 4: Starting training with mixed precision...")
         train_yolo(
-            use_augmentation=False, use_mixed_precision=True, config="focus_accuracy"
+            use_augmentation=False, 
+            use_mixed_precision=True, 
+            config="focus_accuracy",
+            resume=False  # 使用resume=True来恢复训练
         )
     except Exception as e:
         print(f"Error during execution: {str(e)}")
