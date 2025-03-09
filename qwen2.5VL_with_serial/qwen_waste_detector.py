@@ -315,8 +315,14 @@ class SerialManager:
 
 
 class QwenDetector:
-    def __init__(self, api_key=None):
-        """初始化Qwen2.5-VL检测器"""
+    def __init__(self, api_key=None, enable_area_sorting=True, send_interval=1.0):
+        """初始化Qwen2.5-VL检测器
+        
+        Args:
+            api_key: Dashscope API密钥
+            enable_area_sorting: 是否启用按面积排序处理
+            send_interval: 发送间隔时间（秒）
+        """
         self.client = OpenAI(
             api_key=api_key or os.getenv("DASHSCOPE_API_KEY"),
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -343,8 +349,61 @@ class QwenDetector:
         self.current_detections = []
         self.is_detection_in_progress = False
         
+        # 新增：面积排序和顺序处理相关变量
+        self.enable_area_sorting = enable_area_sorting
+        self.send_interval = send_interval  # 发送间隔时间
+        self.processing_queue = []  # 存储待处理的检测结果
+        self.is_processing = True   # 是否正在处理队列
+        self.queue_lock = threading.Lock()  # 队列锁
+        
+        # 如果启用面积排序，启动处理线程
+        if self.enable_area_sorting:
+            self.process_thread = threading.Thread(target=self._process_queue)
+            self.process_thread.daemon = True
+            self.process_thread.start()
+            print(f"检测顺序处理线程已启动，发送间隔: {self.send_interval}秒")
+        
         print(f"Qwen2.5-VL检测器已初始化，使用模型: {self.model}")
+        print(f"面积优先排序: {'启用' if self.enable_area_sorting else '禁用'}")
 
+    def _calculate_area(self, x1, y1, x2, y2):
+        """计算检测框的面积"""
+        return abs((x2 - x1) * (y2 - y1))
+    
+    def _process_queue(self):
+        """处理队列中的检测结果，按顺序发送"""
+        while self.is_processing:
+            detection_to_process = None
+            
+            with self.queue_lock:
+                if self.processing_queue:
+                    detection_to_process = self.processing_queue.pop(0)
+            
+            if detection_to_process:
+                # 解包检测结果
+                class_id = detection_to_process['class_id']
+                center_x = detection_to_process['center_x']
+                center_y = detection_to_process['center_y']
+                confidence = detection_to_process['confidence']
+                display_text = detection_to_process['display_text']
+                area = detection_to_process['area']
+                
+                print(f"\n发送检测: {display_text}")
+                print(f"置信度: {confidence:.2%}")
+                print(f"中心点位置: ({center_x}, {center_y})")
+                print(f"目标面积: {area} 像素^2")
+                print("-" * 30)
+                
+                # 发送到串口
+                self.serial_manager.send_to_stm32(class_id, center_x, center_y)
+                self.serial_manager.update_garbage_count(display_text)
+                
+                # 按照设定的间隔时间等待
+                time.sleep(self.send_interval)
+            else:
+                # 队列为空时短暂休眠，避免CPU占用过高
+                time.sleep(0.1)
+    
     def _should_send_detection(self, class_id, center_x, center_y, confidence):
         """判断是否应该发送当前检测结果"""
         current_time = time.time()
@@ -494,6 +553,9 @@ class QwenDetector:
                 # 清空旧的检测结果
                 self.current_detections = []
                 
+                # 收集检测到的所有对象
+                all_detections = []
+                
                 # 处理检测到的对象
                 if 'detections' in result and len(result['detections']) > 0:
                     for det in result['detections']:
@@ -531,19 +593,11 @@ class QwenDetector:
                         category_id, description = self.waste_classifier.get_category_info(class_id)
                         display_text = f"{category_id}({description})"
                         
-                        # 检查是否应该发送此检测
-                        if self._should_send_detection(class_id, center_x, center_y, confidence):
-                            print(f"\n发送检测: {display_text}")
-                            print(f"置信度: {confidence:.2%}")
-                            print(f"中心点位置: ({center_x}, {center_y})")
-                            print("-" * 30)
-                            
-                            # 发送到串口
-                            self.serial_manager.send_to_stm32(class_id, center_x, center_y)
-                            self.serial_manager.update_garbage_count(display_text)
+                        # 计算面积
+                        area = self._calculate_area(x1, y1, x2, y2)
                         
-                        # 保存检测结果以供绘制
-                        self.current_detections.append({
+                        # 创建检测对象
+                        detection_obj = {
                             'class_id': class_id,
                             'confidence': confidence,
                             'x1': x1,
@@ -552,8 +606,55 @@ class QwenDetector:
                             'y2': y2,
                             'center_x': center_x,
                             'center_y': center_y,
-                            'display_text': display_text
-                        })
+                            'display_text': display_text,
+                            'area': area  # 添加面积信息
+                        }
+                        
+                        # 保存检测对象以供后续处理
+                        all_detections.append(detection_obj)
+                        
+                        # 保存检测结果以供绘制
+                        self.current_detections.append(detection_obj)
+                    
+                    # 处理检测结果
+                    if self.enable_area_sorting and all_detections:
+                        # 按面积从大到小排序
+                        all_detections.sort(key=lambda x: x['area'], reverse=True)
+                        
+                        # 清空当前处理队列
+                        with self.queue_lock:
+                            self.processing_queue = []
+                            
+                            # 将检测对象添加到处理队列
+                            for det in all_detections:
+                                if self._should_send_detection(
+                                    det['class_id'], 
+                                    det['center_x'], 
+                                    det['center_y'], 
+                                    det['confidence']
+                                ):
+                                    self.processing_queue.append(det)
+                                    
+                                    # 调试信息
+                                    if DEBUG_WINDOW:
+                                        print(f"加入队列: {det['display_text']}, 面积: {det['area']}")
+                    else:
+                        # 如果不启用面积排序，则按原来的方式处理
+                        for det in all_detections:
+                            if self._should_send_detection(
+                                det['class_id'], 
+                                det['center_x'], 
+                                det['center_y'], 
+                                det['confidence']
+                            ):
+                                print(f"\n发送检测: {det['display_text']}")
+                                print(f"置信度: {det['confidence']:.2%}")
+                                print(f"中心点位置: ({det['center_x']}, {det['center_y']})")
+                                print("-" * 30)
+                                
+                                # 发送到串口
+                                self.serial_manager.send_to_stm32(det['class_id'], det['center_x'], det['center_y'])
+                                self.serial_manager.update_garbage_count(det['display_text'])
                 
                 else:
                     print("未检测到任何垃圾对象")
@@ -584,14 +685,62 @@ class QwenDetector:
             # 绘制中心点
             cv2.circle(frame, (det['center_x'], det['center_y']), 5, (0, 255, 0), -1)
             
-            # 绘制标签
-            label = f"{det['display_text']} {det['confidence']:.2f}"
+            # 绘制标签，包含面积信息
+            if 'area' in det:
+                label = f"{det['display_text']} {det['confidence']:.2f} A:{det['area']}"
+            else:
+                label = f"{det['display_text']} {det['confidence']:.2f}"
+                
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
             cv2.rectangle(frame, (det['x1'], det['y1'] - th - 10), (det['x1'] + tw + 10, det['y1']), color, -1)
             cv2.putText(frame, label, (det['x1'] + 5, det['y1'] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
         
         return frame
-
+    
+    def set_send_interval(self, interval):
+        """设置发送间隔时间（秒）"""
+        if interval > 0:
+            self.send_interval = interval
+            print(f"发送间隔时间已设置为 {interval} 秒")
+    
+    def set_area_sorting(self, enable):
+        """启用或禁用面积排序功能"""
+        # 如果状态发生变化
+        if enable != self.enable_area_sorting:
+            self.enable_area_sorting = enable
+            
+            # 如果启用面积排序，但处理线程不存在或不在运行
+            if enable and (not hasattr(self, 'process_thread') or not self.process_thread.is_alive()):
+                self.is_processing = True
+                self.process_thread = threading.Thread(target=self._process_queue)
+                self.process_thread.daemon = True
+                self.process_thread.start()
+                print("检测顺序处理线程已启动")
+            
+            print(f"面积优先排序已{'启用' if enable else '禁用'}")
+    
+    def cleanup(self):
+        """清理资源"""
+        print("正在清理QwenDetector资源...")
+        
+        # 停止处理线程
+        if hasattr(self, 'is_processing'):
+            self.is_processing = False
+            
+        # 等待处理线程结束
+        if hasattr(self, 'process_thread') and self.process_thread and self.process_thread.is_alive():
+            try:
+                self.process_thread.join(timeout=2.0)
+                print("检测处理线程已终止")
+            except Exception as e:
+                print(f"终止处理线程出错: {str(e)}")
+        
+        # 清理串口管理器
+        if hasattr(self, "serial_manager"):
+            try:
+                self.serial_manager.cleanup()
+            except Exception as e:
+                print(f"清理串口管理器出错: {str(e)}")
 
 def main():
     # 初始化检测器
@@ -601,8 +750,8 @@ def main():
         print("可以通过 export DASHSCOPE_API_KEY=your_key 设置环境变量")
         return
         
-    detector = QwenDetector(api_key=api_key)
-    
+    #detector = QwenDetector(api_key=api_key, enable_area_sorting=True, send_interval=2.0)
+    detector = QwenDetector(api_key=api_key, enable_area_sorting=False)
     # 查找摄像头
     cap = find_camera()
     if not cap:
