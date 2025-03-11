@@ -10,12 +10,22 @@ def setup_gpu():
     return True, f"已启用GPU: {device_name}"
 
 
-def find_camera():
-    """查找可用的摄像头"""
+def find_camera(width=1280, height=720):
+    """查找可用的摄像头并设置分辨率"""
     for index in range(10):
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
+            # Set the resolution explicitly
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            
+            # Verify if the resolution was actually set
+            actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
             print(f"成功找到可用摄像头，索引为: {index}")
+            print(f"请求分辨率: {width}x{height}, 实际分辨率: {actual_width}x{actual_height}")
+            
             return cap
         cap.release()
     print("错误: 未找到任何可用的摄像头")
