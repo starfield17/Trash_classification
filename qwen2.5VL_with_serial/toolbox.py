@@ -37,31 +37,61 @@ def crop_frame(frame, target_width=720, target_height=720, mode='center'):
     
     参数:
         frame: 输入的视频帧（numpy数组，OpenCV图像格式）
+            例如：frame = cv2.imread('image.jpg') 或从摄像头获取的帧
+            
         target_width: 目标宽度，默认为720
+            推荐值：根据模型输入要求或显示需求设置，常用值有224, 256, 320, 480, 640, 720
+            例如：target_width=480 表示裁切后图像宽度为480像素
+            
         target_height: 目标高度，默认为720
+            推荐值：根据模型输入要求或显示需求设置，常用值有224, 256, 320, 480, 640, 720
+            例如：target_height=480 表示裁切后图像高度为480像素
+            
         mode: 裁切模式，可选值为：
             - 'center': 从中心裁切（默认）
+                适用场景：当目标物体位于图像中央时使用，如正面人像、居中摆放的物品等
+                用法：保留图像中央区域，裁剪掉周围区域
+                示例：crop_frame(frame, 480, 480, mode='center')
+                结果：从图像中央提取480x480的区域
+                
             - 'left': 从左侧裁切
+                适用场景：当目标物体位于图像左侧时使用，如向左侧靠近的物体
+                用法：保留图像左侧区域，裁剪掉右侧区域
+                示例：crop_frame(frame, 300, 720, mode='left')
+                结果：从图像左侧提取宽300高720的区域，保留了图像的左侧部分
+                
             - 'right': 从右侧裁切
+                适用场景：当目标物体位于图像右侧时使用，如向右侧靠近的物体
+                用法：保留图像右侧区域，裁剪掉左侧区域
+                示例：crop_frame(frame, 300, 720, mode='right')
+                结果：从图像右侧提取宽300高720的区域，保留了图像的右侧部分
+                
             - 'top': 从顶部裁切
+                适用场景：当目标物体位于图像上方时使用，如上方摆放的物品、俯视视角
+                用法：保留图像上部区域，裁剪掉下部区域
+                示例：crop_frame(frame, 720, 300, mode='top')
+                结果：从图像顶部提取宽720高300的区域，保留了图像的上部分
+                
             - 'bottom': 从底部裁切
+                适用场景：当目标物体位于图像下方时使用，如桌面上的物品、仰视视角
+                用法：保留图像下部区域，裁剪掉上部区域
+                示例：crop_frame(frame, 720, 300, mode='bottom')
+                结果：从图像底部提取宽720高300的区域，保留了图像的下部分
+                
+            注意：如果原始图像尺寸小于目标尺寸，函数会自动调整目标尺寸为较小的值
     
     返回:
         裁切后的视频帧
     """
-
     # 获取原始帧的尺寸
     frame_height, frame_width = frame.shape[:2]
     
-    # 检查原始尺寸是否小于目标尺寸
+    # 如果原始尺寸小于目标尺寸，调整目标尺寸为更小的值
     if frame_width < target_width or frame_height < target_height:
-        print(f"警告: 原始帧尺寸({frame_width}x{frame_height})小于目标尺寸({target_width}x{target_height})，将进行缩放")
-        # 计算缩放比例
-        scale = max(target_width / frame_width, target_height / frame_height)
-        # 缩放图像
-        frame = cv2.resize(frame, (int(frame_width * scale), int(frame_height * scale)))
-        # 更新尺寸
-        frame_height, frame_width = frame.shape[:2]
+        print(f"警告: 原始帧尺寸({frame_width}x{frame_height})小于目标尺寸({target_width}x{target_height})，将调整目标尺寸")
+        # 调整目标尺寸为原始尺寸和目标尺寸中较小的值
+        target_width = min(frame_width, target_width)
+        target_height = min(frame_height, target_height)
     
     # 计算裁切区域
     if mode == 'center':
