@@ -31,7 +31,7 @@ def find_camera(width=1280, height=720):
     print("错误: 未找到任何可用的摄像头")
     return None
 
-def crop_frame(frame, target_width=720, target_height=720, mode='center'):
+def crop_frame(frame, target_width=720, target_height=720, mode='center', points=None):
     """
     裁切视频帧到指定尺寸
     
@@ -78,13 +78,38 @@ def crop_frame(frame, target_width=720, target_height=720, mode='center'):
                 示例：crop_frame(frame, 720, 300, mode='bottom')
                 结果：从图像底部提取宽720高300的区域，保留了图像的下部分
                 
+            - 'points': 使用四个点坐标进行裁切
+                适用场景：需要裁切任意四边形区域时使用
+                用法：提供四个点的坐标，函数将对这四个点围成的区域进行透视变换裁切
+                示例：crop_frame(frame, 480, 480, mode='points', points=[(100,100), (500,50), (600,400), (50,450)])
+                结果：将四个点围成的四边形区域变换为480x480的矩形图像
+                
             注意：如果原始图像尺寸小于目标尺寸，函数会自动调整目标尺寸为较小的值
-    
     返回:
         裁切后的视频帧
     """
     # 获取原始帧的尺寸
     frame_height, frame_width = frame.shape[:2]
+    if mode == 'points':
+        if points is None or len(points) != 4:
+            raise ValueError("使用'points'模式时必须提供四个点坐标")
+        src_points = np.array(points, dtype=np.float32)
+        
+        # （按左上、右上、右下、左下顺序）
+        dst_points = np.array([
+            [0, 0],
+            [target_width - 1, 0],
+            [target_width - 1, target_height - 1],
+            [0, target_height - 1]
+        ], dtype=np.float32)
+        
+        # 计算透视变换矩阵
+        perspective_matrix = cv2.getPerspectiveTransform(src_points, dst_points)
+        
+        # 应用透视变换
+        cropped_frame = cv2.warpPerspective(frame, perspective_matrix, (target_width, target_height))
+        
+        return cropped_frame
     
     # 如果原始尺寸小于目标尺寸，调整目标尺寸为更小的值
     if frame_width < target_width or frame_height < target_height:
@@ -131,6 +156,7 @@ def crop_frame(frame, target_width=720, target_height=720, mode='center'):
     cropped_frame = frame[start_y:start_y+target_height, start_x:start_x+target_width]
     
     return cropped_frame
+
 
 def get_script_directory():
     script_path = os.path.abspath(__file__)
