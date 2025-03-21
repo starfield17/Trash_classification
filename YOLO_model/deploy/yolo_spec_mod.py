@@ -186,138 +186,14 @@ class SerialManager:
 
             time.sleep(self.MIN_SEND_INTERVAL / 2)
 
-    def _process_queue_batch(self):
-        """处理发送队列中的数据"""
-        # 1. 检查串口状态
-
-        if not self.stm32_port:
-            print("错误: 串口对象不存在")
-            return
-        if not self.stm32_port.is_open:
-            try:
-                print("尝试重新打开串口...")
-                self.stm32_port.open()
-                print("串口重新打开成功")
-            except Exception as e:
-                print(f"串口重新打开失败: {str(e)}")
-                return
-        # 2. 控制发送频率
-
-        current_time = time.time()
-        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
-            return  # 未到发送间隔，等待下次处理
-        # 3. 从队列中获取一条数据
-
-        data_to_send = None
-        with self.queue_lock:
-            if self.send_queue:
-                data_to_send = self.send_queue.pop(0)
-        if not data_to_send:
-            return
-        try:
-            # 4. 数据准备
-            # 简化：不重置缓冲区，可能会导致额外延迟
-            # self.stm32_port.reset_input_buffer()
-            # self.stm32_port.reset_output_buffer()
-            # time.sleep(0.01)
-
-            # 5. 组装数据包，添加包头包尾标识
-
-            data = bytes(
-                [
-                    data_to_send["class_id"],
-                    data_to_send["x"],
-                    data_to_send["y"],
-                ]
-            )
-
-            # 6. 发送数据
-
-            bytes_written = self.stm32_port.write(data)
-            self.stm32_port.flush()
-            self.last_stm32_send_time = current_time
-
-            if DEBUG_WINDOW:
-                print("\n----- 串口发送详细数据 [DEBUG] -----")
-                print(f"十六进制数据: {' '.join([f'0x{b:02X}' for b in data])}")
-
-                # 添加更直观的原始数据包展示
-
-                print("原始数据包结构:")
-                print(
-                    f"  [0] 0x{data[0]:02X} - 类别ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})"
-                )
-                print(
-                    f"  [1] 0x{data[1]:02X} - X坐标 ({data_to_send['orig_x']} -> {data_to_send['x']})"
-                )
-                print(
-                    f"  [2] 0x{data[2]:02X} - Y坐标 ({data_to_send['orig_y']} -> {data_to_send['y']})"
-                )
-                print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
-                print(
-                    f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)"
-                )
-                print(
-                    f"原始坐标: ({data_to_send['orig_x']}, {data_to_send['orig_y']}) -> 缩放后: (0x{data_to_send['x']:02X}, 0x{data_to_send['y']:02X})"
-                )
-                print(
-                    f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒"
-                )
-                print("-" * 50)
-        except serial.SerialTimeoutException:
-            print("串口写入超时，可能是设备未响应")
-            # 超时的数据重新放回队列，保持数据不丢失
-
-            with self.queue_lock:
-                self.send_queue.insert(0, data_to_send)
-        except Exception as e:
-            print(f"串口发送错误: {str(e)}")
-            # 发送失败也考虑重新放回队列
-
-            with self.queue_lock:
-                # 只在重试次数不超过限制时放回队列
-
-                retry_count = data_to_send.get("retry", 0) + 1
-                if retry_count <= 3:  # 最多重试3次
-                    data_to_send["retry"] = retry_count
-                    self.send_queue.insert(0, data_to_send)
-                    print(f"数据将重试发送，第{retry_count}次尝试")
-        except serial.SerialTimeoutException:
-            print("串口写入超时，将重新入队...")
-            # 超时的批次重新放回队列头部
-
-            with self.queue_lock:
-                # 增加重试次数
-
-                retry_count = batch_to_send.get("retry", 0) + 1
-                if retry_count <= 3:  # 最多重试3次
-                    batch_to_send["retry"] = retry_count
-                    # 重新放入队列头部
-
-                    self.send_queue.insert(0, batch_to_send)
-                    print(f"批次将重试发送，第{retry_count}次尝试")
-                else:
-                    print(f"批次重试次数已达上限，丢弃该批次")
-        except Exception as e:
-            print(f"串口发送错误: {str(e)}")
-            # 其他错误时也考虑重试
-
-            with self.queue_lock:
-                retry_count = batch_to_send.get("retry", 0) + 1
-                if retry_count <= 3:
-                    batch_to_send["retry"] = retry_count
-                    self.send_queue.insert(0, batch_to_send)
-                    print(f"错误后重试，第{retry_count}次尝试")
-
     def send_to_stm32(self, class_id, center_x, center_y):
         """发送数据到STM32，使用队列确保数据可靠传输"""
         # 检查串口和队列线程状态
-
         if not self.stm32_port or not self.stm32_port.is_open:
             print("警告: 串口未初始化或未打开，无法发送数据")
             return False
+            
         # 检查队列线程是否在运行
-
         if hasattr(self, "queue_thread") and not self.queue_thread.is_alive():
             print("警告: 队列处理线程未运行，尝试重新启动")
             try:
@@ -328,47 +204,124 @@ class SerialManager:
             except Exception as e:
                 print(f"启动队列线程失败: {str(e)}")
                 return False
-        # 确保数据在有效范围内
-
+                
+        # 0类别映射处理
         if class_id == 0:
             mapped_class_id = self.zero_mapping
         else:
             mapped_class_id = class_id
-        # 强制限制所有值在0-255范围内
-
+            
+        # 限制class_id在0-255范围内
         mapped_class_id = min(255, max(0, mapped_class_id))
-        x_scaled = min(
-            MAX_SERIAL_VALUE, max(0, int(center_x * MAX_SERIAL_VALUE / CAMERA_WIDTH))
-        )
-        y_scaled = min(
-            MAX_SERIAL_VALUE, max(0, int(center_y * MAX_SERIAL_VALUE / CAMERA_HEIGHT))
-        )
-
+        
+        # 将原坐标拆分为高8位和低8位
+        x_low = center_x & 0xFF  # 低8位
+        x_high = (center_x >> 8) & 0xFF  # 高8位
+        y_low = center_y & 0xFF  # 低8位
+        y_high = (center_y >> 8) & 0xFF  # 高8位
+    
         # 添加到发送队列
-
         with self.queue_lock:
             # 限制队列大小，避免内存占用过大
-
             if len(self.send_queue) >= 10:  # 减小队列大小上限，避免积压太多
                 # 保留最新的数据，丢弃旧数据
-
                 self.send_queue = self.send_queue[-9:]
                 print("警告: 发送队列已满，丢弃旧数据")
-            # 将数据添加到队列，包含原始值和缩放后的值
-
-            self.send_queue.append(
-                {
-                    "class_id": mapped_class_id,
-                    "x": x_scaled,
-                    "y": y_scaled,
-                    "timestamp": time.time(),
-                    "orig_x": center_x,
-                    "orig_y": center_y,
-                    "orig_class": class_id,
-                    "retry": 0,  # 初始重试次数
-                }
-            )
+                
+            # 将数据添加到队列
+            self.send_queue.append({
+                "class_id": mapped_class_id,
+                "x_low": x_low,
+                "x_high": x_high,
+                "y_low": y_low,
+                "y_high": y_high,
+                "timestamp": time.time(),
+                "orig_x": center_x,
+                "orig_y": center_y,
+                "orig_class": class_id,
+                "retry": 0,  # 初始重试次数
+            })
         return True
+    
+    def _process_queue_batch(self):
+        """处理发送队列中的数据"""
+        # 1. 检查串口状态
+        if not self.stm32_port:
+            print("错误: 串口对象不存在")
+            return
+            
+        if not self.stm32_port.is_open:
+            try:
+                print("尝试重新打开串口...")
+                self.stm32_port.open()
+                print("串口重新打开成功")
+            except Exception as e:
+                print(f"串口重新打开失败: {str(e)}")
+                return
+                
+        # 2. 控制发送频率
+        current_time = time.time()
+        if current_time - self.last_stm32_send_time < self.MIN_SEND_INTERVAL:
+            return  # 未到发送间隔，等待下次处理
+            
+        # 3. 从队列中获取一条数据
+        data_to_send = None
+        with self.queue_lock:
+            if self.send_queue:
+                data_to_send = self.send_queue.pop(0)
+                
+        if not data_to_send:
+            return
+            
+        try:
+            # 4. 组装数据包
+            data = bytes([
+                data_to_send["class_id"],
+                data_to_send["x_low"],
+                data_to_send["x_high"],
+                data_to_send["y_low"],
+                data_to_send["y_high"]
+            ])
+    
+            # 5. 发送数据
+            bytes_written = self.stm32_port.write(data)
+            self.stm32_port.flush()
+            self.last_stm32_send_time = current_time
+    
+            if DEBUG_WINDOW:
+                print("\n----- 串口发送详细数据 [DEBUG] -----")
+                print(f"十六进制数据: {' '.join([f'0x{b:02X}' for b in data])}")
+    
+                # 添加更直观的原始数据包展示
+                print("原始数据包结构:")
+                print(f"  [0] 0x{data[0]:02X} - 类别ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})")
+                print(f"  [1] 0x{data[1]:02X} - X坐标低8位")
+                print(f"  [2] 0x{data[2]:02X} - X坐标高8位")
+                print(f"  [3] 0x{data[3]:02X} - Y坐标低8位")
+                print(f"  [4] 0x{data[4]:02X} - Y坐标高8位")
+                print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
+                print(f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)")
+                print(f"原始X坐标: {data_to_send['orig_x']} -> 拆分: 低8位=0x{data_to_send['x_low']:02X}, 高8位=0x{data_to_send['x_high']:02X}")
+                print(f"原始Y坐标: {data_to_send['orig_y']} -> 拆分: 低8位=0x{data_to_send['y_low']:02X}, 高8位=0x{data_to_send['y_high']:02X}")
+                print(f"数据在队列中等待时间: {current_time - data_to_send['timestamp']:.3f}秒")
+                print("-" * 50)
+                
+        except serial.SerialTimeoutException:
+            print("串口写入超时，可能是设备未响应")
+            # 超时的数据重新放回队列，保持数据不丢失
+            with self.queue_lock:
+                self.send_queue.insert(0, data_to_send)
+            
+    except Exception as e:
+        print(f"串口发送错误: {str(e)}")
+        # 发送失败也考虑重新放回队列
+        with self.queue_lock:
+            # 只在重试次数不超过限制时放回队列
+            retry_count = data_to_send.get("retry", 0) + 1
+            if retry_count <= 3:  # 最多重试3次
+                data_to_send["retry"] = retry_count
+                self.send_queue.insert(0, data_to_send)
+                print(f"数据将重试发送，第{retry_count}次尝试")
 
     def cleanup(self):
         """清理资源"""
