@@ -277,10 +277,10 @@ class SerialManager:
             # 4. 组装数据包
             data = bytes([
                 data_to_send["class_id"],
-                data_to_send["x_low"],
                 data_to_send["x_high"],
-                data_to_send["y_low"],
-                data_to_send["y_high"]
+                data_to_send["x_low"],
+                data_to_send["y_high"],
+                data_to_send["y_low"]
             ])
     
             # 5. 发送数据
@@ -295,10 +295,10 @@ class SerialManager:
                 # 添加更直观的原始数据包展示
                 print("原始数据包结构:")
                 print(f"  [0] 0x{data[0]:02X} - 类别ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})")
-                print(f"  [1] 0x{data[1]:02X} - X坐标低8位")
-                print(f"  [2] 0x{data[2]:02X} - X坐标高8位")
-                print(f"  [3] 0x{data[3]:02X} - Y坐标低8位")
-                print(f"  [4] 0x{data[4]:02X} - Y坐标高8位")
+                print(f"  [1] 0x{data[1]:02X} - X坐标高8位")
+                print(f"  [2] 0x{data[2]:02X} - X坐标低8位")
+                print(f"  [3] 0x{data[3]:02X} - Y坐标高8位")
+                print(f"  [4] 0x{data[4]:02X} - Y坐标低8位")
                 print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
                 print(f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)")
                 print(f"原始X坐标: {data_to_send['orig_x']} -> 拆分: 低8位=0x{data_to_send['x_low']:02X}, 高8位=0x{data_to_send['x_high']:02X}")
