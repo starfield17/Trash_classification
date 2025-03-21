@@ -312,16 +312,16 @@ class SerialManager:
             with self.queue_lock:
                 self.send_queue.insert(0, data_to_send)
             
-    except Exception as e:
-        print(f"串口发送错误: {str(e)}")
-        # 发送失败也考虑重新放回队列
-        with self.queue_lock:
-            # 只在重试次数不超过限制时放回队列
-            retry_count = data_to_send.get("retry", 0) + 1
-            if retry_count <= 3:  # 最多重试3次
-                data_to_send["retry"] = retry_count
-                self.send_queue.insert(0, data_to_send)
-                print(f"数据将重试发送，第{retry_count}次尝试")
+        except Exception as e:
+            print(f"串口发送错误: {str(e)}")
+            # 发送失败也考虑重新放回队列
+            with self.queue_lock:
+                # 只在重试次数不超过限制时放回队列
+                retry_count = data_to_send.get("retry", 0) + 1
+                if retry_count <= 3:  # 最多重试3次
+                    data_to_send["retry"] = retry_count
+                    self.send_queue.insert(0, data_to_send)
+                    print(f"数据将重试发送，第{retry_count}次尝试")
 
     def cleanup(self):
         """清理资源"""
