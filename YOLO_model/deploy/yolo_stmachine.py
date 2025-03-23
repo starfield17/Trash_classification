@@ -16,7 +16,7 @@ from toolbox import WasteClassifier
 # Global Variables(默认变量)
 # ============================================================
 # Default configuration values
-DEBUG_WINDOW = False
+DEBUG_WINDOW = True
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9
 model_path = "yolov12n_e300.pt"
