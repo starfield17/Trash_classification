@@ -9,11 +9,12 @@ import os
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
+#Third party function and class 
 from toolbox import get_script_directory, setup_gpu, find_camera, crop_frame
 from toolbox import WasteClassifier
 
 # ============================================================
-# Global Variables(默认变量)
+# Global config Variables (全局配置变量)
 # ============================================================
 # Default configuration values
 DEBUG_WINDOW = True
@@ -24,7 +25,7 @@ STM32_PORT = "/dev/ttyUSB0"
 STM32_BAUD = 115200
 
 # ============================================================
-# Configuration(配置参数)
+# Default configuration (默认配置参数)
 # ============================================================
 
 @dataclass
@@ -49,7 +50,7 @@ class Config:
     # ttyAMA4  | GPIO8  | GPIO9
     # ttyAMA5  | GPIO12 | GPIO13
     
-    stm32_port: str = "/dev/ttyUSB0"#choose any serial you want 
+    stm32_port: str = "/dev/ttyUSB0" #choose any serial you want 
     stm32_baud: int = 115200
     
     # Camera configuration
@@ -73,7 +74,6 @@ class Config:
 # ============================================================
 
 class DetectionState(Enum):
-    """States for the detection state machine"""
     IDLE = auto()
     DETECTING = auto()
     PROCESSING = auto()
@@ -81,7 +81,6 @@ class DetectionState(Enum):
     ERROR = auto()
 
 class DetectionEvent(Enum):
-    """Events for the detection state machine"""
     FRAME_RECEIVED = auto()
     DETECTION_COMPLETED = auto()
     SEND_DETECTION = auto()
@@ -91,8 +90,6 @@ class DetectionEvent(Enum):
 
 
 class EventBus:
-    """A simple event bus for decoupling components"""
-    
     def __init__(self):
         self.subscribers = {}
         
@@ -147,7 +144,6 @@ class StateMachine:
         return False
     
     def get_state(self):
-        """Get the current state of the state machine"""
         return self.state
 
 
@@ -237,7 +233,6 @@ class SerialService:
         # Ensure class_id is within valid range
         mapped_class_id = min(255, max(0, mapped_class_id))
         
-        # Split coordinates into high and low bytes
         x_low = detection.center_x & 0xFF
         x_high = (detection.center_x >> 8) & 0xFF
         y_low = detection.center_y & 0xFF
@@ -248,7 +243,6 @@ class SerialService:
             if len(self.send_queue) >= 10:
                 self.send_queue = self.send_queue[-9:]
                 print("警告: 发送队列已满，丢弃旧数据")
-            
             # Add data to queue
             self.send_queue.append({
                 "class_id": mapped_class_id,
@@ -273,8 +267,7 @@ class SerialService:
                 self._send_next_item()
             except Exception as e:
                 print(f"队列处理异常: {str(e)}")
-            
-            # Short sleep to avoid high CPU usage
+            # Short sleep
             time.sleep(0.01)
     
     def _send_next_item(self):
@@ -708,20 +701,20 @@ class WasteDetectionApp:
         
         try:
             while True:
-                # Read frame
+                # Read
                 ret, frame = cap.read()
                 if not ret:
                     print("错误: 无法读取摄像头画面")
                     break
                 
-                # Crop frame
+                # Crop
                 if self.config.crop_points:
                     frame = crop_frame(frame, points=self.config.crop_points)
                 
-                # Process frame
+                # Process
                 frame = self.detection_service.detect(frame)
                 
-                # Display frame
+                # Display
                 if self.config.debug_window:
                     window_name = "YOLO_detect"
                     cv2.imshow(window_name, frame)
