@@ -14,18 +14,18 @@ from toolbox import get_script_directory, setup_gpu, find_camera, crop_frame
 from toolbox import WasteClassifier
 
 # ============================================================
-# Global config Variables (全局配置变量)
+# Global config Variables(high pri) / 全局配置变量(高优先级)
 # ============================================================
 # Default configuration values
 DEBUG_WINDOW = True
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9
 model_path = "yolov12n_e300.pt"
-STM32_PORT = "/dev/ttyUSB0"
+STM32_PORT = "/dev/ttyUSB0" #choose any serial you want 
 STM32_BAUD = 115200
 
 # ============================================================
-# Default configuration (默认配置参数)
+# Default configuration(low pri) / 默认配置参数(低优先级)
 # ============================================================
 
 @dataclass
@@ -50,7 +50,7 @@ class Config:
     # ttyAMA4  | GPIO8  | GPIO9
     # ttyAMA5  | GPIO12 | GPIO13
     
-    stm32_port: str = "/dev/ttyUSB0" #choose any serial you want 
+    stm32_port: str = "/dev/ttyUSB0" 
     stm32_baud: int = 115200
     
     # Camera configuration
@@ -70,7 +70,7 @@ class Config:
 
 
 # ============================================================
-# Event System
+# Event System / 系统事件
 # ============================================================
 
 class DetectionState(Enum):
@@ -107,7 +107,7 @@ class EventBus:
 
 
 # ============================================================
-# State Machine
+# State Machine / 状态机
 # ============================================================
 
 class StateMachine:
@@ -148,7 +148,7 @@ class StateMachine:
 
 
 # ============================================================
-# Data Models
+# Data Models / 模型
 # ============================================================
 
 @dataclass
@@ -173,7 +173,7 @@ class Detection:
 
 
 # ============================================================
-# Serial Communication Service
+# Serial Communication Service / 串口服务
 # ============================================================
 
 class SerialService:
@@ -372,7 +372,7 @@ class SerialService:
 
 
 # ============================================================
-# Detection Service
+# Detection Service / 检测服务
 # ============================================================
 
 class DetectionService:
@@ -623,7 +623,7 @@ class DetectionService:
 
 
 # ============================================================
-# Statistics Manager
+# Statistics Manager / 计数
 # ============================================================
 
 class StatisticsManager:
@@ -656,7 +656,7 @@ class StatisticsManager:
 
 
 # ============================================================
-# Application Class
+# Application Class / 集成层
 # ============================================================
 
 class WasteDetectionApp:
@@ -744,7 +744,7 @@ class WasteDetectionApp:
 
 
 # ============================================================
-# Main Function
+# Main Function / 主函数
 # ============================================================
 
 def main():
