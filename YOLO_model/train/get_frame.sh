@@ -103,8 +103,6 @@ process_video() {
     return 0
 }
 
-
-
 # 函数：将视频转换为 MP4 格式
 convert_to_mp4() {
     local VIDEO_PATH="$1"
@@ -249,15 +247,15 @@ case "$COMMAND" in
                     return
                 fi
                 
-                # 执行 find 命令并读取结果
-                find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0 | while IFS= read -r -d '' file; do
+                # 修改：使用进程替换而不是管道，避免子shell问题
+                while IFS= read -r -d '' file; do
                     if is_video_file "$file"; then
                         echo "处理视频文件: $file"
                         process_video "$file"
                     else
                         echo "跳过非视频文件: $file"
                     fi
-                done
+                done < <(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
                 
                 echo "所有视频文件处理完成。"
             elif [ -f "$path" ]; then
@@ -295,9 +293,11 @@ case "$COMMAND" in
                     fi
                 done
                 # 去掉最后的 -o
-                unset 'FIND_CONDITIONS[-1]'
+                if [ ${#FIND_CONDITIONS[@]} -gt 0 ]; then
+                    unset 'FIND_CONDITIONS[${#FIND_CONDITIONS[@]}-1]'
+                fi
 
-                # 执行 find 命令并读取结果
+                # 修改：使用进程替换而不是管道，避免子shell问题
                 while IFS= read -r -d '' file; do
                     if is_video_file "$file"; then
                         echo "转换视频文件: $file"
@@ -306,6 +306,7 @@ case "$COMMAND" in
                         echo "跳过非视频文件: $file"
                     fi
                 done < <(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
+                
                 echo "所有视频文件转换完成。"
             elif [ -f "$path" ]; then
                 if is_video_file "$path"; then
