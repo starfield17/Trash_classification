@@ -15,6 +15,7 @@ is_video_file() {
     return 1
 }
 # 函数：处理单个视频文件，提取帧
+# 函数：处理单个视频文件，提取帧
 process_video() {
     local VIDEO_PATH="$1"
 
@@ -34,41 +35,85 @@ process_video() {
     # 创建保存帧的目录
     local OUTPUT_DIR="$VIDEO_DIR/${VIDEO_NAME}_frames"
     mkdir -p "$OUTPUT_DIR"
-    echo "正在从 '$VIDEO_PATH' 提取帧..."
-    local RESULT
-    RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1,format=yuv420p" -pix_fmt rgb24 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png" 2>&1)
     
-    # 检查命令执行结果
-    if [ $? -eq 0 ]; then
-        echo "帧已成功保存到目录: $OUTPUT_DIR"
-        return 0
+    # 确保目录权限正确
+    chmod 755 "$OUTPUT_DIR"
+
+    # 检查输出目录是否创建成功
+    if [ ! -d "$OUTPUT_DIR" ]; then
+        echo "错误: 无法创建输出目录 '$OUTPUT_DIR'"
+        return 1
+    fi
+
+    echo "正在从 '$VIDEO_PATH' 提取帧..."
+    local SUCCESS=false
+
+    echo "尝试方法1 (基本方法)..."
+    if ffmpeg -i "$VIDEO_PATH" -vf "fps=1" "$OUTPUT_DIR/${VIDEO_NAME}_%03d.png" 2>/dev/null; then
+        echo "方法1成功: 帧已保存到目录: $OUTPUT_DIR"
+        SUCCESS=true
     else
-        echo "错误: ffmpeg 处理失败"
-        echo "$RESULT" | grep -i "error"
-        
-        echo "尝试备选方案..."
-        RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1,scale=iw:ih,format=yuv444p" -pix_fmt rgb24 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png" 2>&1)
-        
-        if [ $? -eq 0 ]; then
-            echo "备选方案成功: 帧已保存到目录: $OUTPUT_DIR"
-            return 0
+        echo "方法1失败，尝试其他方法..."
+    fi
+
+    if [ "$SUCCESS" = false ]; then
+        echo "尝试方法2 (颜色空间转换)..."
+        if ffmpeg -i "$VIDEO_PATH" -vf "fps=1,format=yuv420p" -pix_fmt rgb24 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.png" 2>/dev/null; then
+            echo "方法2成功: 帧已保存到目录: $OUTPUT_DIR"
+            SUCCESS=true
         else
-            echo "备选方案同样失败"
-            echo "$RESULT" | grep -i "error"
-            
-            echo "尝试简单转换方法..."
-            RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1" -q:v 1 "$OUTPUT_DIR/${VIDEO_NAME}_%d.jpg" 2>&1)
-            
-            if [ $? -eq 0 ]; then
-                echo "简单转换成功: 帧已保存到目录: $OUTPUT_DIR (注意: 已保存为JPG格式)"
-                return 0
-            else
-                echo "所有转换方法均失败。无法提取帧。"
-                return 1
-            fi
+            echo "方法2失败，尝试其他方法..."
         fi
     fi
+    
+    if [ "$SUCCESS" = false ]; then
+        echo "尝试方法3 (使用JPEG格式)..."
+        if ffmpeg -i "$VIDEO_PATH" -vf "fps=1" -q:v 2 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>/dev/null; then
+            echo "方法3成功: 帧已以JPEG格式保存到目录: $OUTPUT_DIR"
+            SUCCESS=true
+        else
+            echo "方法3失败，尝试其他方法..."
+        fi
+    fi
+    
+    if [ "$SUCCESS" = false ]; then
+        echo "尝试方法4 (指定解码器)..."
+        if ffmpeg -c:v h264 -i "$VIDEO_PATH" -vf "fps=1" -q:v 2 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>/dev/null; then
+            echo "方法4成功: 使用h264解码器，帧已保存到目录: $OUTPUT_DIR"
+            SUCCESS=true
+        else
+            echo "方法4失败，尝试其他方法..."
+        fi
+    fi
+    
+    if [ "$SUCCESS" = false ]; then
+        echo "尝试方法5 (降低质量)..."
+        if ffmpeg -i "$VIDEO_PATH" -vf "fps=1,scale=640:-1" -q:v 3 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>/dev/null; then
+            echo "方法5成功: 以较低质量保存帧到目录: $OUTPUT_DIR"
+            SUCCESS=true
+        else
+            echo "方法5失败，尝试最后方法..."
+        fi
+    fi
+    
+    if [ "$SUCCESS" = false ]; then
+        echo "尝试最终方法并显示详细错误..."
+        local RESULT
+        RESULT=$(ffmpeg -v verbose -i "$VIDEO_PATH" -vf "fps=1" -q:v 3 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>&1)
+        if [ $? -eq 0 ]; then
+            echo "最终方法成功: 帧已保存到目录: $OUTPUT_DIR"
+            SUCCESS=true
+        else
+            echo "所有方法均失败。视频文件可能已损坏或格式不受支持。"
+            echo "详细错误信息:"
+            echo "$RESULT" | grep -i "error"
+            return 1
+        fi
+    fi
+    
+    return 0
 }
+
 
 
 # 函数：将视频转换为 MP4 格式
