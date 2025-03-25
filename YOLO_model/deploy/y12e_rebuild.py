@@ -761,7 +761,7 @@ class WasteDetectionApp:
     def run(self):
         """Run the application"""
         # Initialize camera
-        cap = find_camera()
+        cap = find_camera(self.camera_width,self.camera_height)
         if not cap:
             print("找不到摄像头")
             return
