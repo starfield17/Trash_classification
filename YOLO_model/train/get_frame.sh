@@ -14,8 +14,7 @@ is_video_file() {
     done
     return 1
 }
-# 函数：处理单个视频文件，提取帧
-# 函数：处理单个视频文件，提取帧
+
 process_video() {
     local VIDEO_PATH="$1"
 
@@ -235,26 +234,41 @@ case "$COMMAND" in
             local path="$1"
             if [ -d "$path" ]; then
                 echo "检测到目录: $path"
-                echo "开始处理目录中的视频文件..."
+                echo "开始递归处理目录及其子目录中的视频文件..."
 
                 # 构造 find 命令的搜索条件
                 FIND_CONDITIONS=()
                 for ext in "${VIDEO_EXTENSIONS[@]}"; do
-                    FIND_CONDITIONS+=("-iname" "*.${ext}")
+                    FIND_CONDITIONS+=("-name" "*.${ext}")
+                    FIND_CONDITIONS+=("-o" "-name" "*.${ext^^}")
                     FIND_CONDITIONS+=("-o")
                 done
                 # 去掉最后的 -o
-                unset 'FIND_CONDITIONS[-1]'
-
+                unset 'FIND_CONDITIONS[${#FIND_CONDITIONS[@]}-1]'
+                
+                # 执行 find 命令前先打印一下搜索条件
+                echo "正在递归搜索以下类型的视频文件: ${VIDEO_EXTENSIONS[*]}"
+                
+                # 获取找到的视频文件数量
+                VIDEO_COUNT=$(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) | wc -l)
+                echo "在目录 '$path' 及其子目录中找到 $VIDEO_COUNT 个视频文件"
+                
+                # 如果没有找到视频文件，退出
+                if [ "$VIDEO_COUNT" -eq 0 ]; then
+                    echo "没有找到视频文件，退出处理。"
+                    return
+                fi
+                
                 # 执行 find 命令并读取结果
-                while IFS= read -r -d '' file; do
+                find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0 | while IFS= read -r -d '' file; do
                     if is_video_file "$file"; then
                         echo "处理视频文件: $file"
                         process_video "$file"
                     else
                         echo "跳过非视频文件: $file"
                     fi
-                done < <(find "$path" -type f \( "${FIND_CONDITIONS[@]}" \) -print0)
+                done
+                
                 echo "所有视频文件处理完成。"
             elif [ -f "$path" ]; then
                 if is_video_file "$path"; then
@@ -273,6 +287,7 @@ case "$COMMAND" in
 
         process_input "$INPUT_PATH"
         ;;
+
     getmp4)
         # 转换视频为 MP4 格式功能
         convert_input() {
