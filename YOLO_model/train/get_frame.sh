@@ -86,16 +86,6 @@ process_video() {
     fi
     
     if [ "$SUCCESS" = false ]; then
-        echo "尝试方法5 (降低质量)..."
-        if ffmpeg -i "$VIDEO_PATH" -vf "fps=1,scale=640:-1" -q:v 3 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>/dev/null; then
-            echo "方法5成功: 以较低质量保存帧到目录: $OUTPUT_DIR"
-            SUCCESS=true
-        else
-            echo "方法5失败，尝试最后方法..."
-        fi
-    fi
-    
-    if [ "$SUCCESS" = false ]; then
         echo "尝试最终方法并显示详细错误..."
         local RESULT
         RESULT=$(ffmpeg -v verbose -i "$VIDEO_PATH" -vf "fps=1" -q:v 3 "$OUTPUT_DIR/${VIDEO_NAME}_%03d.jpg" 2>&1)
