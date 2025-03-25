@@ -354,7 +354,7 @@ process_mergevideo() {
     if [ ! -e "$path" ]; then
         log_error "路径 '$path' 不存在。"
         return 1
-    }
+    fi
     
     if [ -d "$path" ]; then
         log_info "检测到目录: $path"
