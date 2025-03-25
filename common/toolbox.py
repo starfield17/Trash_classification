@@ -165,23 +165,18 @@ class WasteClassifier:
         # 分类名称
 
         self.class_names = {
-            0: "厨余垃圾",
-            1: "可回收垃圾",
-            2: "有害垃圾",
-            3: "其他垃圾",
+            0: "food waste",
+            1: "recyclable trash",
+            2: "harmful garbage",
+            3: "Other garbage",
         }
-
-        # 细分类到大分类的映射 - 移除,因为我们直接使用四大类
-
         self.category_mapping = None
-
         # 分类名称对应的描述(可选)
-
         self.category_descriptions = {
-            0: "厨余垃圾",
-            1: "可回收利用垃圾",
-            2: "有害垃圾",
-            3: "其他垃圾",
+            0: "food waste",
+            1: "recyclable tras",
+            2: "harmful garbage",
+            3: "Other garbage",
         }
 
     def get_category_info(self, class_id):
