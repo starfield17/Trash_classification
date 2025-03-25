@@ -14,7 +14,6 @@ is_video_file() {
     done
     return 1
 }
-
 # 函数：处理单个视频文件，提取帧
 process_video() {
     local VIDEO_PATH="$1"
@@ -35,12 +34,42 @@ process_video() {
     # 创建保存帧的目录
     local OUTPUT_DIR="$VIDEO_DIR/${VIDEO_NAME}_frames"
     mkdir -p "$OUTPUT_DIR"
-
-    # 使用 ffmpeg 每1秒抽取一帧，并指定输出格式和质量
-    ffmpeg -i "$VIDEO_PATH" -vf fps=1 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png" >/dev/null 2>&1
-
-    echo "帧已保存到目录: $OUTPUT_DIR"
+    echo "正在从 '$VIDEO_PATH' 提取帧..."
+    local RESULT
+    RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1,format=yuv420p" -pix_fmt rgb24 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png" 2>&1)
+    
+    # 检查命令执行结果
+    if [ $? -eq 0 ]; then
+        echo "帧已成功保存到目录: $OUTPUT_DIR"
+        return 0
+    else
+        echo "错误: ffmpeg 处理失败"
+        echo "$RESULT" | grep -i "error"
+        
+        echo "尝试备选方案..."
+        RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1,scale=iw:ih,format=yuv444p" -pix_fmt rgb24 "$OUTPUT_DIR/${VIDEO_NAME}_%d.png" 2>&1)
+        
+        if [ $? -eq 0 ]; then
+            echo "备选方案成功: 帧已保存到目录: $OUTPUT_DIR"
+            return 0
+        else
+            echo "备选方案同样失败"
+            echo "$RESULT" | grep -i "error"
+            
+            echo "尝试简单转换方法..."
+            RESULT=$(ffmpeg -i "$VIDEO_PATH" -vf "fps=1" -q:v 1 "$OUTPUT_DIR/${VIDEO_NAME}_%d.jpg" 2>&1)
+            
+            if [ $? -eq 0 ]; then
+                echo "简单转换成功: 帧已保存到目录: $OUTPUT_DIR (注意: 已保存为JPG格式)"
+                return 0
+            else
+                echo "所有转换方法均失败。无法提取帧。"
+                return 1
+            fi
+        fi
+    fi
 }
+
 
 # 函数：将视频转换为 MP4 格式
 convert_to_mp4() {
