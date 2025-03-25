@@ -68,40 +68,70 @@ class Config:
     min_position_change: int = 20
     send_interval: float = 0.0  # No delay between sending detections
 
-
 # ============================================================
 # Event System / 系统事件
 # ============================================================
 
 class DetectionState(Enum):
-    IDLE = auto()
-    DETECTING = auto()
-    PROCESSING = auto()
-    SENDING = auto()
-    ERROR = auto()
+    """
+    检测系统的状态枚举
+    IDLE: 空闲状态，等待新的帧输入
+    DETECTING: 正在进行目标检测
+    PROCESSING: 正在处理检测结果
+    SENDING: 正在发送检测数据到下游设备
+    ERROR: 系统出错状态
+    """
+    IDLE = auto()        # 空闲状态，等待新的帧
+    DETECTING = auto()   # 正在进行对象检测
+    PROCESSING = auto()  # 正在处理检测结果
+    SENDING = auto()     # 正在发送检测数据
+    ERROR = auto()       # 错误状态
 
 class DetectionEvent(Enum):
-    FRAME_RECEIVED = auto()
-    DETECTION_COMPLETED = auto()
-    SEND_DETECTION = auto()
-    DETECTION_SENT = auto()
-    ERROR_OCCURRED = auto()
-    RESET = auto()
-
+    """
+    触发状态转换的事件枚举
+    FRAME_RECEIVED: 接收到新的视频帧
+    DETECTION_COMPLETED: 完成目标检测
+    SEND_DETECTION: 发送检测结果
+    DETECTION_SENT: 检测结果已发送
+    ERROR_OCCURRED: 发生错误
+    RESET: 重置系统
+    """
+    FRAME_RECEIVED = auto()     # 收到新的视频帧
+    DETECTION_COMPLETED = auto() # 完成了目标检测
+    SEND_DETECTION = auto()     # 发送检测结果的事件
+    DETECTION_SENT = auto()     # 检测结果已发送
+    ERROR_OCCURRED = auto()     # 发生错误
+    RESET = auto()              # 重置系统
 
 class EventBus:
+    """
+    事件总线类：实现了发布-订阅模式，用于系统各组件间的解耦通信
+    - 允许不同组件订阅特定类型的事件
+    - 当事件发生时，通知所有订阅了该事件的组件
+    """
     def __init__(self):
+        # 存储事件类型到订阅者回调函数的映射
         self.subscribers = {}
         
     def subscribe(self, event_type, callback):
-        """Subscribe to an event type"""
+        """
+        订阅特定类型的事件
+        @param event_type: 事件类型，通常是DetectionEvent枚举值
+        @param callback: 当事件发生时要调用的回调函数
+        """
         if event_type not in self.subscribers:
             self.subscribers[event_type] = []
         self.subscribers[event_type].append(callback)
         
     def publish(self, event_type, *args, **kwargs):
-        """Publish an event to all subscribers"""
+        """
+        发布事件到所有订阅者
+        @param event_type: 要发布的事件类型
+        @param args, kwargs: 传递给订阅者回调函数的参数
+        """
         if event_type in self.subscribers:
+            # 调用所有订阅了该事件的回调函数
             for callback in self.subscribers[event_type]:
                 callback(*args, **kwargs)
 
@@ -111,39 +141,68 @@ class EventBus:
 # ============================================================
 
 class StateMachine:
-    """A generic state machine implementation"""
+    """
+    通用状态机实现
+    - 管理系统的状态转换
+    - 事件触发状态转换
+    - 状态转换时执行回调函数
+    """
     
     def __init__(self, initial_state):
-        self.state = initial_state
-        self.transitions = {}
-        self.callbacks = {}
+        """
+        初始化状态机
+        @param initial_state: 初始状态，通常是DetectionState枚举值
+        """
+        self.state = initial_state           # 当前状态
+        self.transitions = {}                # 存储状态转换规则
+        self.callbacks = {}                  # 存储转换时的回调函数
         
     def add_transition(self, from_state, event, to_state, callback=None):
-        """Add a transition to the state machine"""
+        """
+        添加状态转换规则
+        @param from_state: 起始状态
+        @param event: 触发转换的事件
+        @param to_state: 目标状态
+        @param callback: 可选的回调函数，在状态转换时执行
+        """
+        # 如果起始状态不在转换表中，添加它
         if from_state not in self.transitions:
             self.transitions[from_state] = {}
+        # 设置从起始状态经过事件到目标状态的转换规则
         self.transitions[from_state][event] = to_state
         
+        # 如果提供了回调函数，存储它
         if callback:
+            # 为特定的(状态,事件)对存储回调函数
             if (from_state, event) not in self.callbacks:
                 self.callbacks[(from_state, event)] = []
             self.callbacks[(from_state, event)].append(callback)
     
     def trigger(self, event, *args, **kwargs):
-        """Trigger an event on the state machine"""
+        """
+        触发事件，尝试执行状态转换
+        @param event: 要触发的事件
+        @param args, kwargs: 传递给回调函数的参数
+        @return: 如果状态转换成功返回True，否则返回False
+        """
+        # 检查当前状态是否有对应事件的转换规则
         if self.state in self.transitions and event in self.transitions[self.state]:
-            # Execute callbacks
+            # 执行与此状态和事件相关的所有回调
             if (self.state, event) in self.callbacks:
                 for callback in self.callbacks[(self.state, event)]:
                     callback(*args, **kwargs)
             
-            # Transition to the new state
+            # 执行状态转换
             old_state = self.state
             self.state = self.transitions[self.state][event]
             return True
         return False
     
     def get_state(self):
+        """
+        获取当前状态
+        @return: 当前状态值
+        """
         return self.state
 
 
@@ -408,49 +467,63 @@ class DetectionService:
         self.start_processing_thread()
     
     def _setup_state_machine(self):
-        """Set up state machine transitions"""
-        # Idle to Detecting
+        """
+        设置状态机的转换规则
+        1. 从IDLE状态开始，当接收到新的视频帧时转到DETECTING状态
+        2. 在DETECTING状态完成检测后，转到PROCESSING状态
+        3. 从PROCESSING状态准备发送数据时，转到SENDING状态
+        4. 数据发送完成后，从SENDING状态回到IDLE状态，准备下一帧处理
+        5. 任何状态下如果发生错误，都会转到ERROR状态
+        6. 从ERROR状态可以通过RESET事件重置回IDLE状态
+        """
+        # IDLE状态 -> DETECTING状态：当接收到新的视频帧
+        # 状态机的起点，表示系统从空闲状态开始接收新帧进行检测
         self.state_machine.add_transition(
-            DetectionState.IDLE,
-            DetectionEvent.FRAME_RECEIVED,
-            DetectionState.DETECTING
+            DetectionState.IDLE,                # 起始状态：空闲
+            DetectionEvent.FRAME_RECEIVED,      # 触发事件：收到新帧
+            DetectionState.DETECTING            # 目标状态：正在检测
         )
         
-        # Detecting to Processing
+        # DETECTING状态 -> PROCESSING状态：当检测完成
+        # 当目标检测完成后，系统需要处理检测结果
         self.state_machine.add_transition(
-            DetectionState.DETECTING,
-            DetectionEvent.DETECTION_COMPLETED,
-            DetectionState.PROCESSING
+            DetectionState.DETECTING,           # 起始状态：正在检测
+            DetectionEvent.DETECTION_COMPLETED, # 触发事件：检测完成
+            DetectionState.PROCESSING           # 目标状态：正在处理结果
         )
         
-        # Processing to Sending
+        # PROCESSING状态 -> SENDING状态：当需要发送检测结果
+        # 处理完检测结果后，系统准备发送数据到下游设备（如STM32）
         self.state_machine.add_transition(
-            DetectionState.PROCESSING,
-            DetectionEvent.SEND_DETECTION,
-            DetectionState.SENDING
+            DetectionState.PROCESSING,          # 起始状态：正在处理结果
+            DetectionEvent.SEND_DETECTION,      # 触发事件：发送检测结果
+            DetectionState.SENDING              # 目标状态：正在发送
         )
         
-        # Sending back to Idle
+        # SENDING状态 -> IDLE状态：当检测结果已发送
+        # 发送完成后，系统回到空闲状态，等待下一帧
         self.state_machine.add_transition(
-            DetectionState.SENDING,
-            DetectionEvent.DETECTION_SENT,
-            DetectionState.IDLE
+            DetectionState.SENDING,             # 起始状态：正在发送
+            DetectionEvent.DETECTION_SENT,      # 触发事件：数据已发送
+            DetectionState.IDLE                 # 目标状态：回到空闲状态
         )
         
-        # Error handling
+        # 错误处理：任何状态下发生错误都会转到ERROR状态
+        # 这是一个全局错误处理机制，确保系统在任何异常情况下都能进入可控的错误状态
         for state in DetectionState:
-            if state != DetectionState.ERROR:
+            if state != DetectionState.ERROR:   # 对除ERROR外的所有状态
                 self.state_machine.add_transition(
-                    state,
-                    DetectionEvent.ERROR_OCCURRED,
-                    DetectionState.ERROR
+                    state,                       # 任何起始状态
+                    DetectionEvent.ERROR_OCCURRED, # 触发事件：发生错误
+                    DetectionState.ERROR         # 目标状态：错误状态
                 )
         
-        # Reset from error
+        # 从ERROR状态重置：通过RESET事件回到IDLE状态
+        # 提供从错误状态恢复的机制，重新开始检测流程
         self.state_machine.add_transition(
-            DetectionState.ERROR,
-            DetectionEvent.RESET,
-            DetectionState.IDLE
+            DetectionState.ERROR,               # 起始状态：错误状态
+            DetectionEvent.RESET,               # 触发事件：重置
+            DetectionState.IDLE                 # 目标状态：回到空闲状态
         )
     
     def _load_model(self):
