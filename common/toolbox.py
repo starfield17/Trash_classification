@@ -9,6 +9,22 @@ def setup_gpu():
     device_name = torch.cuda.get_device_name(0)
     return True, f"已启用GPU: {device_name}"
 
+def find_ttyusb(max_index=10):
+    """查找可用的ttyUSB设备
+    
+    参数:
+        max_index: 最大查找索引，默认查找从ttyUSB0 ~ ttyUSB9
+        
+    返回:
+        存在的ttyUSB设备路径字符串，如果未找到则返回None
+    """
+    for index in range(max_index):
+        ttyusb_path = f"/dev/ttyUSB{index}"
+        if os.path.exists(ttyusb_path):
+            print(f"成功找到可用ttyUSB设备: {ttyusb_path}")
+            return ttyusb_path
+    print("错误: 未找到任何可用的ttyUSB设备")
+    return None
 
 def find_camera(width=1280, height=720):
     """查找可用的摄像头并设置分辨率"""
