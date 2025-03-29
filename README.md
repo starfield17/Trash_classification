@@ -125,7 +125,7 @@ conda activate deploy_env
 ### 3. 安装依赖包
 ```bash
 # 基础依赖
-pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision ultralytics opencv-python numpy pyserial
+pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision ultralytics opencv-python numpy pyserial transitions
 ```
 
 ### 4. 配置用户权限
