@@ -36,78 +36,10 @@ import numpy as np
 from pathlib import Path
 import gc
 import torch
+from concurrent.futures import ThreadPoolExecutor
 
 select_model = "yolo11n.pt"  # 选择的模型,默认为yolo11n,可以更改
 datapath = "./label"  # 根据实际情况修改
-
-
-def check_and_clean_dataset(data_dir):
-    """检查数据集完整性并清理无效数据"""
-    print("正在检查数据集完整性...")
-    # 获取所有图片文件
-
-    image_extensions = (".jpg", ".jpeg", ".png")
-    image_files = [
-        f for f in os.listdir(data_dir) if f.lower().endswith(image_extensions)
-    ]
-    valid_pairs = []
-    print(f"找到 {len(image_files)} 张图片")
-    # 检查每个图片是否有效且有对应的标签文件
-
-    for img_file in image_files:
-        img_path = os.path.join(data_dir, img_file)
-        base_name = os.path.splitext(img_file)[0]
-        if "." in base_name:
-            pass  # 如果需要，可以添加额外的处理逻辑
-        json_file = os.path.join(data_dir, base_name + ".json")
-        # 检查图片完整性
-
-        try:
-            img = cv2.imread(img_path)
-            if img is None:
-                print(f"警告: 损坏或无效的图片文件: {img_file}")
-                continue
-            # 检查图片尺寸是否合理
-
-            height, width = img.shape[:2]
-            if height < 10 or width < 10:
-                print(f"警告: 图片尺寸过小: {img_file}")
-                continue
-        except Exception as e:
-            print(f"警告: 读取图片 {img_file} 时出错: {e}")
-            continue
-        # 检查标签文件是否存在且有效
-
-        if os.path.exists(json_file):
-            # 确保标签文件确实是一个 JSON 文件，而不是其他格式
-
-            if not json_file.lower().endswith(".json"):
-                print(f"警告: 标签文件扩展名不正确 (应为 .json): {json_file}")
-                continue
-            # 验证 JSON 文件内容
-
-            if validate_json_file(json_file):
-                try:
-                    with open(json_file, "r", encoding="utf-8") as f:
-                        label_data = json.load(f)
-                    # 验证标签数据结构
-
-                    if "labels" not in label_data:
-                        print(f"警告: 标签文件结构无效 (缺少 'labels' 键): {json_file}")
-                        continue
-                    valid_pairs.append(img_file)
-                except Exception as e:
-                    print(f"警告: 处理标签文件 {json_file} 时发生错误: {e}")
-                    continue
-            else:
-                # JSON 文件无效，跳过
-
-                continue
-        else:
-            print(f"警告: 找不到对应的标签文件: {json_file}")
-    print(f"找到 {len(valid_pairs)} 对有效的图片和标签文件")
-    return valid_pairs
-
 
 def validate_json_file(json_path):
     """
@@ -128,6 +60,107 @@ def validate_json_file(json_path):
         print(f"警告: 无法读取 JSON 文件 {json_path} - 错误: {e}")
         return False
 
+# Helper function to check a single image and its label file
+def _check_single_file(img_file, data_dir):
+    """Checks a single image file and its corresponding JSON label file."""
+    img_path = os.path.join(data_dir, img_file)
+    base_name = os.path.splitext(img_file)[0]
+    json_file = os.path.join(data_dir, base_name + ".json")
+
+    # 检查图片完整性
+    try:
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"警告: 损坏或无效的图片文件: {img_file}")
+            return None # Indicate failure
+        # 检查图片尺寸是否合理
+        height, width = img.shape[:2]
+        if height < 10 or width < 10:
+            print(f"警告: 图片尺寸过小: {img_file}")
+            return None # Indicate failure
+    except Exception as e:
+        print(f"警告: 读取图片 {img_file} 时出错: {e}")
+        return None # Indicate failure
+
+    # 检查标签文件是否存在且有效
+    if os.path.exists(json_file):
+        # 确保标签文件确实是一个 JSON 文件
+        if not json_file.lower().endswith(".json"):
+            print(f"警告: 标签文件扩展名不正确 (应为 .json): {json_file}")
+            return None # Indicate failure
+
+        # 验证 JSON 文件内容 (first check validity)
+        if not validate_json_file(json_file):
+             # validate_json_file already printed a warning
+            return None # Indicate failure
+
+        # 验证 JSON 文件结构 (second check structure)
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                label_data = json.load(f)
+            if "labels" not in label_data:
+                print(f"警告: 标签文件结构无效 (缺少 'labels' 键): {json_file}")
+                return None # Indicate failure
+            # If all checks pass, return the image file name
+            return img_file
+        except Exception as e:
+            # Catch errors during the structure check read
+            print(f"警告: 处理标签文件 {json_file} (结构检查) 时发生错误: {e}")
+            return None # Indicate failure
+    else:
+        print(f"警告: 找不到对应的标签文件: {json_file}")
+        return None # Indicate failure
+
+
+def check_and_clean_dataset(data_dir):
+    """检查数据集完整性并清理无效数据 (Parallelized Version)"""
+    print("正在检查数据集完整性 (并行)...")
+    image_extensions = (".jpg", ".jpeg", ".png")
+
+    try:
+        # Check if data_dir exists before listing
+        if not os.path.isdir(data_dir):
+             print(f"错误: 数据目录不存在或不是一个目录: {data_dir}")
+             return []
+        all_files = os.listdir(data_dir)
+    except Exception as e:
+        print(f"错误: 无法列出目录 {data_dir}: {e}")
+        return []
+
+    image_files = [
+        f for f in all_files if f.lower().endswith(image_extensions)
+    ]
+    print(f"找到 {len(image_files)} 个潜在图片文件")
+    if not image_files:
+        print("目录中未找到支持的图片文件。")
+        return []
+
+    valid_pairs = []
+    futures = []
+    # Determine max_workers, leave some cores free for other tasks
+    # Use at least 1 worker even if cpu_count is None or 1
+    max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
+    print(f"使用最多 {max_workers} 个 worker 线程进行检查...")
+
+    # Use ThreadPoolExecutor for parallel execution
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit check task for each image file
+        for img_file in image_files:
+            futures.append(executor.submit(_check_single_file, img_file, data_dir))
+
+        # Collect results as they complete
+        for future in futures:
+            try:
+                result = future.result() # Get the return value from _check_single_file
+                if result:  # If the helper function returned an img_file name (success)
+                    valid_pairs.append(result)
+            except Exception as exc:
+                # Catch potential exceptions during future execution/result retrieval
+                # Although _check_single_file handles most internal errors
+                print(f'一个文件检查任务产生异常: {exc}')
+
+    print(f"\n检查完成。找到 {len(valid_pairs)} 对有效的图片和标签文件。")
+    return valid_pairs
 
 def create_data_yaml():
     """创建数据配置文件 - 使用四大分类"""
@@ -145,48 +178,85 @@ def create_data_yaml():
         yaml.dump(data, f, sort_keys=False, allow_unicode=True)
 
 
-def prepare_dataset(data_dir, valid_pairs):
-    """准备数据集 - 修改验证集划分比例"""
-    # 确保验证集至少有10张图片
+def process_split(split_name, files, data_dir):
+    """Processes image copying and label conversion for a given dataset split."""
+    print(f"\nProcessing {split_name} split...")
+    split_img_dir = os.path.join(split_name, "images")
+    split_lbl_dir = os.path.join(split_name, "labels")
 
+    # Ensure target directories exist (though prepare_dataset already creates them)
+    os.makedirs(split_img_dir, exist_ok=True)
+    os.makedirs(split_lbl_dir, exist_ok=True)
+
+    for img_file in files:
+        base_name = os.path.splitext(img_file)[0]
+        src_img = os.path.join(data_dir, img_file)
+        src_json = os.path.join(data_dir, base_name + ".json")
+        dst_img = os.path.join(split_img_dir, img_file) # Corrected destination path
+        dst_txt = os.path.join(split_lbl_dir, base_name + ".txt") # Corrected destination path
+
+        # Copy image and convert label
+        # Error handling during conversion is inside convert_labels
+        if os.path.exists(src_img) and os.path.exists(src_json):
+            try:
+                shutil.copy2(src_img, dst_img)
+                convert_labels(src_json, dst_txt)
+            except Exception as e:
+                print(f"Error processing file pair ({img_file}, {base_name}.json): {e}")
+        else:
+            if not os.path.exists(src_img):
+                 print(f"Warning: Source image not found during split processing: {src_img}")
+            if not os.path.exists(src_json):
+                 print(f"Warning: Source JSON not found during split processing: {src_json}")
+
+
+    print(f"{split_name}: Processed {len(files)} potential images")
+
+
+def prepare_dataset(data_dir, valid_pairs):
+    """准备数据集 - 修改验证集划分比例 (Parallelized Version)"""
+    # 确保验证集至少有10张图片
     if len(valid_pairs) < 15:
         raise ValueError(
             f"Not enough valid data pairs ({len(valid_pairs)}). Need at least 15 images."
         )
     # 清理现有目录
-
+    print("\nCleaning up existing train/val/test directories...")
     for split in ["train", "val", "test"]:
         if os.path.exists(split):
             shutil.rmtree(split)
         for subdir in ["images", "labels"]:
             os.makedirs(os.path.join(split, subdir), exist_ok=True)
-    # 数据集划分 (80% 训练, 10% 验证, 10% 测试)
 
+    # 数据集划分 (80% 训练, 10% 验证, 10% 测试)
+    print("Splitting dataset into train, validation, and test sets...")
     train_files, temp = train_test_split(valid_pairs, test_size=0.2, random_state=42)
     val_files, test_files = train_test_split(temp, test_size=0.5, random_state=42)
 
     splits = {"train": train_files, "val": val_files, "test": test_files}
 
-    # 处理每个分割
+    # 使用 ThreadPoolExecutor 并行处理每个数据集分割
+    print("Starting parallel processing of dataset splits...")
+    # Determine max_workers, leave some cores free for other tasks
+    max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit tasks for each split
+        futures = {
+            executor.submit(process_split, split_name, files, data_dir): split_name
+            for split_name, files in splits.items()
+        }
 
-    for split_name, files in splits.items():
-        print(f"\nProcessing {split_name} split...")
-        for img_file in files:
-            # 修改这部分代码
+        # Wait for all tasks to complete and check for exceptions
+        for future in futures:
+            split_name = futures[future]
+            try:
+                future.result()  # Wait for task completion and raise exceptions if any
+                print(f"Finished processing {split_name} split.")
+            except Exception as exc:
+                print(f'{split_name} split generated an exception: {exc}')
 
-            base_name = os.path.splitext(img_file)[0]
-            src_img = os.path.join(data_dir, img_file)
-            # 确保我们使用正确的JSON文件名
-
-            src_json = os.path.join(data_dir, base_name + ".json")
-            dst_img = os.path.join(split_name, "images", img_file)
-            dst_txt = os.path.join(split_name, "labels", base_name + ".txt")
-
-            # 复制图片和转换标签
-
-            shutil.copy2(src_img, dst_img)
-            convert_labels(src_json, dst_txt)
-        print(f"{split_name}: {len(files)} images")
+    print("\nDataset preparation complete.")
+    print(f"Train: {len(train_files)} images, Val: {len(val_files)} images, Test: {len(test_files)} images")
     return len(train_files), len(val_files), len(test_files)
 
 
@@ -533,3 +603,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
