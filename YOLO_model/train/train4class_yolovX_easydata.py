@@ -214,49 +214,95 @@ def process_split(split_name, files, data_dir):
 
 
 def prepare_dataset(data_dir, valid_pairs):
-    """准备数据集 - 修改验证集划分比例 (Parallelized Version)"""
+    """准备数据集 - 修改验证集划分比例 (增强版，处理非空目录)"""
     # 确保验证集至少有10张图片
     if len(valid_pairs) < 15:
         raise ValueError(
-            f"Not enough valid data pairs ({len(valid_pairs)}). Need at least 15 images."
+            f"有效数据对数量不足 ({len(valid_pairs)})。至少需要15张图片。"
         )
-    # 清理现有目录
-    print("\nCleaning up existing train/val/test directories...")
+    
+    # 清理现有目录 - 改进的清理方法
+    print("\n正在清理现有的train/val/test目录...")
     for split in ["train", "val", "test"]:
-        if os.path.exists(split):
-            shutil.rmtree(split)
+        split_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), split)
+        if os.path.exists(split_path):
+            print(f"正在删除 {split_path} 目录...")
+            try:
+                # 尝试直接删除目录
+                shutil.rmtree(split_path)
+            except OSError as e:
+                print(f"无法直接删除目录 {split_path}，错误：{e}")
+                print(f"尝试逐个删除其中的文件和子目录...")
+                
+                # 逐个删除文件和目录
+                for root, dirs, files in os.walk(split_path, topdown=False):
+                    # 先删除文件
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        try:
+                            os.remove(file_path)
+                            print(f"已删除文件: {file_path}")
+                        except Exception as e:
+                            print(f"警告: 无法删除文件 {file_path}: {e}")
+                    
+                    # 再删除空目录
+                    for dir_name in dirs:
+                        dir_path = os.path.join(root, dir_name)
+                        try:
+                            os.rmdir(dir_path)
+                            print(f"已删除目录: {dir_path}")
+                        except Exception as e:
+                            print(f"警告: 无法删除目录 {dir_path}: {e}")
+                
+                # 最后尝试删除主目录
+                try:
+                    os.rmdir(split_path)
+                    print(f"已成功删除 {split_path}")
+                except Exception as e:
+                    print(f"警告: 无法删除主目录 {split_path}: {e}")
+                    print(f"将尝试继续处理...")
+        
+        # 重新创建目录结构
+        print(f"创建 {split} 目录结构...")
         for subdir in ["images", "labels"]:
-            os.makedirs(os.path.join(split, subdir), exist_ok=True)
+            subdir_path = os.path.join(split_path, subdir)
+            try:
+                os.makedirs(subdir_path, exist_ok=True)
+                print(f"已创建目录: {subdir_path}")
+            except Exception as e:
+                print(f"错误: 无法创建目录 {subdir_path}: {e}")
+                raise
 
     # 数据集划分 (80% 训练, 10% 验证, 10% 测试)
-    print("Splitting dataset into train, validation, and test sets...")
+    print("将数据集划分为训练集、验证集和测试集...")
     train_files, temp = train_test_split(valid_pairs, test_size=0.2, random_state=42)
     val_files, test_files = train_test_split(temp, test_size=0.5, random_state=42)
 
     splits = {"train": train_files, "val": val_files, "test": test_files}
 
     # 使用 ThreadPoolExecutor 并行处理每个数据集分割
-    print("Starting parallel processing of dataset splits...")
-    # Determine max_workers, leave some cores free for other tasks
+    print("开始并行处理数据集划分...")
+    # 确定worker数量，为其他任务保留一些核心
     max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit tasks for each split
+        # 为每个划分提交任务
         futures = {
             executor.submit(process_split, split_name, files, data_dir): split_name
             for split_name, files in splits.items()
         }
 
-        # Wait for all tasks to complete and check for exceptions
+        # 等待所有任务完成并检查异常
         for future in futures:
             split_name = futures[future]
             try:
-                future.result()  # Wait for task completion and raise exceptions if any
-                print(f"Finished processing {split_name} split.")
+                future.result()  # 等待任务完成并引发异常（如果有）
+                print(f"完成处理 {split_name} 划分。")
             except Exception as exc:
-                print(f'{split_name} split generated an exception: {exc}')
+                print(f'{split_name} 划分生成了一个异常: {exc}')
+                print(f'尝试继续处理其他划分...')
 
-    print("\nDataset preparation complete.")
-    print(f"Train: {len(train_files)} images, Val: {len(val_files)} images, Test: {len(test_files)} images")
+    print("\n数据集准备完成。")
+    print(f"训练集: {len(train_files)} 图片, 验证集: {len(val_files)} 图片, 测试集: {len(test_files)} 图片")
     return len(train_files), len(val_files), len(test_files)
 
 
