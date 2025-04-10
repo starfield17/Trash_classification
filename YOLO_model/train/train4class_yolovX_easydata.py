@@ -38,7 +38,7 @@ import gc
 import torch
 from concurrent.futures import ThreadPoolExecutor
 
-select_model = "yolo11n.pt"  # 选择的模型,默认为yolo11n,可以更改
+select_model = "yolo12n.pt"  # 选择的模型,默认为yolo12n,可以更改
 datapath = "./label"  # 根据实际情况修改
 
 def validate_json_file(json_path):
