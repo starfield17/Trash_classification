@@ -637,7 +637,7 @@ def main():
 
         print("\nStep 4: Starting training with mixed precision...")
         train_yolo(
-            use_augmentation=False, 
+            use_augmentation=True, 
             use_mixed_precision=True, 
             config="focus_accuracy",
             resume=False  # 使用resume=True来恢复训练
