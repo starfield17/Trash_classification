@@ -273,9 +273,9 @@ def prepare_dataset(data_dir, valid_pairs):
                 print(f"错误: 无法创建目录 {subdir_path}: {e}")
                 raise
 
-    # 数据集划分 (80% 训练, 10% 验证, 10% 测试)
+    # 数据集划分 (90% 训练, 5% 验证, 5% 测试)
     print("将数据集划分为训练集、验证集和测试集...")
-    train_files, temp = train_test_split(valid_pairs, test_size=0.2, random_state=42)
+    train_files, temp = train_test_split(valid_pairs, test_size=0.1, random_state=42)
     val_files, test_files = train_test_split(temp, test_size=0.5, random_state=42)
 
     splits = {"train": train_files, "val": val_files, "test": test_files}
