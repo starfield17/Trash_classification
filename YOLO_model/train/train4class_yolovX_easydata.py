@@ -559,16 +559,16 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
     if use_augmentation:
         augmentation_args = {
             "augment": True,  # 启用数据增强
-            "degrees": 5.0,  # 随机旋转的角度范围
+            "degrees": 10.0,  # 随机旋转的角度范围
             "scale": 0.2,  # 随机缩放的比例范围
-            "fliplr": 0.5,  # 随机水平翻转的概率
-            "flipud": 0.0,  # 随机垂直翻转的概率
-            "hsv_h": 0.01,  # 随机调整色调的范围
+            "fliplr": 0.2,  # 随机水平翻转的概率
+            "flipud": 0.2,  # 随机垂直翻转的概率
+            "hsv_h": 0.03,  # 随机调整色调的范围
             "hsv_s": 0.2,  # 随机调整饱和度的范围
             "hsv_v": 0.1,  # 随机调整明度的范围
-            "mosaic": 0,  # 马赛克增强的比例
-            "mixup": 0,  # 混合增强的比例
-            "copy_paste": 0,  # 复制粘贴增强的比例
+            "mosaic": 0.1,  # 马赛克增强的比例
+            "mixup": 0.1,  # 混合增强的比例
+            "copy_paste": 0.05,  # 复制粘贴增强的比例
         }
         train_args.update(augmentation_args)
     else:
