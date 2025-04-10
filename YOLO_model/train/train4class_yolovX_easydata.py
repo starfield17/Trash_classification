@@ -536,11 +536,16 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
         train_args.update(
             {
                 "imgsz": 640,
-                "box": 6.0,
-                "cls": 3.0,
-                "dfl": 2.5,
-                "patience": 100,
+                "box": 7.5,
+                "cls": 4.0,
+                "dfl": 3.0,
+                "patience": 150,
                 "batch": 16 if device == "0" else 4,  # GPU使用16，CPU使用4
+                "epochs": 300,
+                "lr0": 0.001,
+                "lrf": 0.01,
+                "weight_decay": 0.0005,
+                "dropout": 0.1,# 添加dropout,减少过拟合
             }
         )
     elif config == "focus_speed":
