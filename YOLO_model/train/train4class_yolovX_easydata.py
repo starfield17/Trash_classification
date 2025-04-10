@@ -465,6 +465,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             - 'small_dataset': 数据集较小时的优化配置
             - 'focus_accuracy': 注重检测精度时的优化配置
             - 'focus_speed': 注重训练速度时的优化配置
+            - 'severmode': 使用租用服务器时的优化配置（完全覆盖原有配置） 
     """
     model = YOLO(select_model)  # 加载预训练的YOLO模型权重
     num_workers = max(1, min(os.cpu_count() - 2, 8))
@@ -557,10 +558,37 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
                 "batch": 48 if device == "0" else 4,  # GPU使用48，CPU使用4
             }
         )
+    elif config == "severmode":
+        train_args.update({
+            # 保留focus_accuracy的精度优化参数
+            "box": 7.5,                # 提高边界框损失权重
+            "cls": 4.0,                # 提高分类损失权重
+            "dfl": 3.0,                # 提高DFL损失权重
+            "patience": 150,           # 保持高容忍度确保最佳精度
+            "epochs": 300,             # 保持较长训练周期
+            "dropout": 0.1,            # 保留dropout防止过拟合
+            # 服务器性能优化参数
+            "imgsz": 640,             
+            "batch": 32,               # 提高batch size
+            "lr0": 0.001,              # focus_accuracy的学习率
+            "lrf": 0.01,               # focus_accuracy的学习率衰减
+            "weight_decay": 0.0005,    # 保留weight_decay参数
+            "optimizer": "AdamW",      # 使用AdamW优化器
+            "workers": os.cpu_count() - 2,  # 充分利用CPU核心
+            "device": "0",             # 确保使用GPU
+            "half": True,              # 强制启用半精度训练
+            "cache": "ram",            # 使用RAM缓存加速
+            "cos_lr": True,            # 使用余弦学习率调度
+            "warmup_epochs": 10,       # 保持充分的预热
+            "close_mosaic": 50,        # 最后30个epoch关闭马赛克增强提高精度
+            "overlap_mask": True,      # 启用重叠掩码
+            "save_period": 5,         # 定期保存检查点
+            "multi_scale": True,       # 多尺度训练增强泛化能力
+        })
+        
     elif config != "default":
         print(f"警告: 未识别的配置模式 '{config}'，将使用默认配置。")
     # 数据增强参数
-
     if use_augmentation:
         augmentation_args = {
             "augment": True,  # 启用数据增强
@@ -578,7 +606,6 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
         train_args.update(augmentation_args)
     else:
         # 强制关闭所有数据增强
-
         no_augment_args = {
             "augment": False,  # 关闭数据增强
             "degrees": 0.0,  # 禁用旋转
@@ -644,7 +671,7 @@ def main():
         train_yolo(
             use_augmentation=True, 
             use_mixed_precision=True, 
-            config="focus_accuracy",
+            config="severmode", #个人PC不要用这个！！！
             resume=False  # 使用resume=True来恢复训练
         )
     except Exception as e:
