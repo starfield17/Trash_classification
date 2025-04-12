@@ -574,7 +574,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             "lrf": 0.01,               # focus_accuracy的学习率衰减
             "weight_decay": 0.0005,    # 保留weight_decay参数
             "optimizer": "AdamW",      # 使用AdamW优化器
-            "workers": os.cpu_count() - 2,  # 充分利用CPU核心
+            "workers": os.cpu_count() / 2 ,  # 充分利用CPU核心
             "device": "0",             # 确保使用GPU
             "half": True,              # 强制启用半精度训练
             "cache": "ram",            # 使用RAM缓存加速
