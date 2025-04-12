@@ -581,7 +581,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             "cache": "ram",            # 使用RAM缓存加速
             "cos_lr": True,            # 使用余弦学习率调度
             "warmup_epochs": 10,       # 保持充分的预热
-            "close_mosaic": 50,        # 最后30个epoch关闭马赛克增强提高精度
+            #"close_mosaic": 50,        # 这里有bug,先关闭
             "overlap_mask": True,      # 启用重叠掩码
             "save_period": 5,         # 定期保存检查点
             "multi_scale": True,       # 多尺度训练增强泛化能力
