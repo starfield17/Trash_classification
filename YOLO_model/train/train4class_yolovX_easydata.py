@@ -1,31 +1,6 @@
-"""add path of ttf font"""
-
 import os
 import shutil
 from pathlib import Path
-
-
-def setup_font():
-    config_dir = Path.home() / ".config" / "Ultralytics"
-    target_font = config_dir / "Arial.Unicode.ttf"
-    if target_font.exists():
-        return
-    config_dir.mkdir(parents=True, exist_ok=True)
-    local_font = Path(__file__).parent / "Arial.Unicode.ttf"
-    if not local_font.exists():
-        print(
-            f"Please place the Arial.Unicode.ttf file in the code directory: {local_font}"
-        )
-        return
-    try:
-        shutil.copy2(local_font, target_font)
-        print(f"Font file has been copied to: {target_font}")
-    except Exception as e:
-        print(f"Error occurred while copying the font file: {e}")
-
-
-setup_font()
-"""ttf added """
 from ultralytics import YOLO
 import yaml
 import json
