@@ -49,20 +49,20 @@ class YOLOAutoLabeler:
         # Example: If your model has {0: 'kitchen', 1: 'recyclable', 2: 'hazardous', 3: 'other'}
         # Ensure the keys match the integer class IDs predicted by your YOLO model.
         self.category_names = {
-            0: "Kitchen waste",    # Key 0 corresponds to model's class ID 0
-            1: "Recyclable waste", # Key 1 corresponds to model's class ID 1
-            2: "Hazardous waste",  # Key 2 corresponds to model's class ID 2
-            3: "Other waste",      # Key 3 corresponds to model's class ID 3
+            0: "Kitchen_waste",    # Key 0 corresponds to model's class ID 0
+            1: "Recyclable_waste", # Key 1 corresponds to model's class ID 1
+            2: "Hazardous_waste",  # Key 2 corresponds to model's class ID 2
+            3: "Other_waste",      # Key 3 corresponds to model's class ID 3
             # Add more mappings if your model has more classes you want to map
         }
 
         # Create reverse mapping for convenience if needed, and colors
         self.category_mapping = {v: k for k, v in self.category_names.items()}
         self.category_colors = {
-            0: (86, 180, 233),    # Kitchen waste - Blue
-            1: (230, 159, 0),     # Recyclable waste - Orange
-            2: (240, 39, 32),     # Hazardous waste - Red
-            3: (0, 158, 115),     # Other waste - Green
+            0: (86, 180, 233),    # Kitchen_waste - Blue
+            1: (230, 159, 0),     # Recyclable_waste - Orange
+            2: (240, 39, 32),     # Hazardous_waste - Red
+            3: (0, 158, 115),     # Other_waste - Green
         }
 
         logger.info(f"YOLOAutoLabeler initialized.")
@@ -227,7 +227,7 @@ class YOLOAutoLabeler:
         vis_img = img.copy()
 
         for det in detections:
-            name = det.get('name', 'unknown') # This is the category name, e.g., "Kitchen waste"
+            name = det.get('name', 'unknown') # This is the category name, e.g., "Kitchen_waste"
             x1 = max(0, int(det.get('x1', 0)))
             y1 = max(0, int(det.get('y1', 0)))
             x2 = min(vis_img.shape[1], int(det.get('x2', vis_img.shape[1])))
