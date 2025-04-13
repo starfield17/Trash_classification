@@ -334,17 +334,21 @@ def convert_labels(json_file, txt_file):
 
         category_mapping = {
             # 厨余垃圾 (0)
+            "Kitchen waste": 0,
             "potato": 0,
             "daikon": 0,
             "carrot": 0,
             # 可回收垃圾 (1)
+            "Recyclable waste": 1,
             "bottle": 1,
             "can": 1,
             # 有害垃圾 (2)
+            "Hazardous waste": 2,
             "battery": 2,
             "drug": 2,
             "inner_packing": 2,
             # 其他垃圾 (3)
+             "Other waste": 3,
             "tile": 3,
             "stone": 3,
             "brick": 3,
