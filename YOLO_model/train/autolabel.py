@@ -33,9 +33,9 @@ class QwenAutoLabeler:
         """
         self.client = OpenAI(
             api_key=api_key,
-            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            base_url="https://api.siliconflow.cn/v1",
         )
-        self.model = "qwen2.5-vl-72b-instruct"
+        self.model = "Qwen/Qwen2.5-VL-72B-Instruct"
         self.confidence_threshold = confidence_threshold
         self.max_retries = max_retries
         
