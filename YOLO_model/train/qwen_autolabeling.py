@@ -41,26 +41,26 @@ class QwenAutoLabeler:
         
         # Define the mapping from category names to IDs
         self.category_mapping = {
-            "Kitchen waste": 0,
-            "Recyclable waste": 1,
-            "Hazardous waste": 2,
-            "Other waste": 3,
+            "Kitchen_waste": 0,
+            "Recyclable_waste": 1,
+            "Hazardous_waste": 2,
+            "Other_waste": 3,
         }
         
         # For reverse lookup - from category ID to name (remains the same)
         self.category_names = {
-            0: "Kitchen waste",
-            1: "Recyclable waste",
-            2: "Hazardous waste",
-            3: "Other waste",
+            0: "Kitchen_waste",
+            1: "Recyclable_waste",
+            2: "Hazardous_waste",
+            3: "Other_waste",
         }
         
         # Define colors for visualization (remains the same)
         self.category_colors = {
-            0: (86, 180, 233),    # Kitchen waste - Blue
-            1: (230, 159, 0),     # Recyclable waste - Orange
-            2: (240, 39, 32),     # Hazardous waste - Red
-            3: (0, 158, 115),     # Other waste - Green
+            0: (86, 180, 233),    # Kitchen_waste - Blue
+            1: (230, 159, 0),     # Recyclable_waste - Orange
+            2: (240, 39, 32),     # Hazardous_waste - Red
+            3: (0, 158, 115),     # Other_waste - Green
         }
         
         logger.info(f"QwenAutoLabeler initialized with model: {self.model}")
@@ -134,16 +134,16 @@ class QwenAutoLabeler:
             list: List of valid detections with category names
         """
         prompt = (
-            "Please identify objects in the image and classify them into one of the four main waste categories: "
-            "**Kitchen waste**, **Recyclable waste**, **Hazardous waste**, or **Other waste**. Provide the location for each identified object.\n\n"
+            "Please identify objects in the image and classify them into one of the four main_waste categories: "
+            "**Kitchen_waste**, **Recyclable_waste**, **Hazardous_waste**, or **Other_waste**. Provide the location for each identified object.\n\n"
             "Here are examples of items belonging to each category:\n"
-            "- **Kitchen waste:** potato, daikon, carrot (whole or cut).\n"
-            "- **Recyclable waste:** bottle (plastic, glass, metal), paper cups, cans.\n"
-            "- **Hazardous waste:** battery, drug (medicine itself or outer packaging like boxes), inner_packing (blister packs).\n"
-            "- **Other waste:** tile, stone, brick.\n\n"
+            "- **Kitchen_waste:** potato, daikon, carrot (whole or cut).\n"
+            "- **Recyclable_waste:** bottle (plastic, glass, metal), paper cups, cans.\n"
+            "- **Hazardous_waste:** battery, drug (medicine itself or outer packaging like boxes), inner_packing (blister packs).\n"
+            "- **Other_waste:** tile, stone, brick.\n\n"
             "**Important:** For each detected object, you MUST return the main category name as the 'name'.\n\n"
             "Provide the following information for each detection:\n"
-            "1. name: Must be exactly one of 'Kitchen waste', 'Recyclable waste', 'Hazardous waste', or 'Other waste'.\n"
+            "1. name: Must be exactly one of 'Kitchen_waste', 'Recyclable_waste', 'Hazardous_waste', or 'Other_waste'.\n"
             "2. Bounding box coordinates (x1, y1, x2, y2).\n"
             "3. Detection confidence score.\n\n"
             "Return the results strictly in JSON format:\n"
@@ -151,7 +151,7 @@ class QwenAutoLabeler:
             "{\n"
             "  \"labels\": [\n"
             "    {\n"
-            "      \"name\": \"Kitchen waste\",\n"
+            "      \"name\": \"Kitchen_waste\",\n"
             "      \"x1\": 100,\n"
             "      \"y1\": 200,\n"
             "      \"x2\": 300,\n"
@@ -159,7 +159,7 @@ class QwenAutoLabeler:
             "      \"confidence\": 0.95\n"
             "    },\n"
             "    {\n"
-            "      \"name\": \"Recyclable waste\",\n"
+            "      \"name\": \"Recyclable_waste\",\n"
             "      \"x1\": 450,\n"
             "      \"y1\": 150,\n"
             "      \"x2\": 550,\n"
@@ -167,7 +167,7 @@ class QwenAutoLabeler:
             "      \"confidence\": 0.87\n"
             "    },\n"
             "    {\n"
-            "      \"name\": \"Hazardous waste\",\n"
+            "      \"name\": \"Hazardous_waste\",\n"
             "      \"x1\": 600,\n"
             "      \"y1\": 300,\n"
             "      \"x2\": 700,\n"
@@ -330,7 +330,7 @@ class QwenAutoLabeler:
         vis_img = img.copy()
         
         for det in detections:
-            name = det.get('name', '') # This is now the category name, e.g., "Kitchen waste"
+            name = det.get('name', '') # This is now the category name, e.g., "Kitchen_waste"
             x1 = max(0, int(det.get('x1', 0)))
             y1 = max(0, int(det.get('y1', 0)))
             x2 = min(vis_img.shape[1], int(det.get('x2', vis_img.shape[1])))
