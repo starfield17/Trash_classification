@@ -430,6 +430,89 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
                 f"{class_label} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
             )
 
+def save_quantized_models(weights_dir, data_yaml_path):
+    """Loads the best model and saves different precision versions."""
+    best_pt_path = os.path.join(weights_dir, 'best.pt')
+    if not os.path.exists(best_pt_path):
+        print(f"Error: {best_pt_path} not found. Cannot save quantized models.")
+        return
+
+    print(f"\nLoading best model from {best_pt_path} for post-training saving...")
+    try:
+        model = YOLO(best_pt_path)
+    except Exception as e:
+        print(f"Error loading model {best_pt_path}: {e}")
+        return
+
+    # Define output paths within the same weights directory
+    fp32_weights_path = os.path.join(weights_dir, 'best_fp32_weights.pt')
+    fp16_export_path = os.path.join(weights_dir, 'best_fp16_exported.pt')
+    int8_export_path = os.path.join(weights_dir, 'best_int8_exported.pt')
+
+    project_path = Path(weights_dir).parent.parent # Get the project path (e.g., ./ )
+
+    try:
+        # 1. Save FP32 weights only
+        print(f"Saving FP32 weights only to {fp32_weights_path}...")
+        # Access the underlying PyTorch model state_dict
+        if hasattr(model, 'model') and hasattr(model.model, 'state_dict'):
+             torch.save(model.model.state_dict(), fp32_weights_path)
+             print("FP32 weights saved.")
+        else:
+             # Fallback for different ultralytics versions or model structures
+             try:
+                 torch.save(model.state_dict(), fp32_weights_path)
+                 print("FP32 state_dict saved (may include more than just weights).")
+             except Exception as fallback_e:
+                 print(f"Warning: Could not access model weights directly. Skipping FP32 weights save. Error: {fallback_e}")
+
+        # Ensure model is on the correct device for export (CPU or GPU)
+        export_device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+        model.to(export_device)
+        print(f"Using device {export_device} for export.")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        # 2. Export FP16 model
+        print(f"Exporting FP16 model to {fp16_export_path}...")
+        # Use file= kwarg to specify filename directly
+        model.export(format='pytorch', half=True, device=export_device, file=Path(fp16_export_path).stem) # Provide filename stem
+        print(f"FP16 model exported to {fp16_export_path}") # Log the actual expected path
+        gc.collect()
+        if torch.cuda.is_available():
+             torch.cuda.empty_cache()
+
+
+        # 3. Export INT8 model (requires calibration data from data.yaml)
+        print(f"Exporting INT8 model to {int8_export_path}...")
+        # Ensure the data yaml path is correct for calibration
+        if not os.path.exists(data_yaml_path):
+             print(f"Warning: data.yaml not found at {data_yaml_path}. INT8 calibration may fail or use defaults.")
+        # Use file= kwarg
+        model.export(format='pytorch', int8=True, data=data_yaml_path, device=export_device, file=Path(int8_export_path).stem) # Provide filename stem
+        print(f"INT8 model exported to {int8_export_path}") # Log the actual expected path
+        gc.collect()
+        if torch.cuda.is_available():
+             torch.cuda.empty_cache()
+
+        # 4. INT4 Quantization (Mention complexity)
+        print("\nNote: Direct INT4 PyTorch export ('best_q4.pt') is complex and often requires")
+        print("specialized libraries (like AutoGPTQ, AWQ) or conversion via ONNX/TensorRT.")
+        print("Skipping direct INT4 .pt export.")
+
+    except Exception as e:
+        print(f"\nError during model quantization/export: {e}")
+        print("Please ensure necessary libraries (like torch, onnx, onnxruntime, etc.) are installed")
+        print(f"and the data configuration in {data_yaml_path} is correct for INT8 calibration.")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Clean up GPU memory after export operations
+        del model
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config="default", resume=False):
     """
@@ -607,18 +690,18 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
     else:
         train_args.update({"half": False})
     # 开始训练并传入所有参数
-
     try:
         print(f"\n使用设备: {'GPU' if device == '0' else 'CPU'}")
         print(f"Batch size: {train_args['batch']}")
-        print(f"混合精度训练: {'启用' if train_args['half'] else '禁用'}\n")
-
+        print(f"混合精度训练: {'启用' if train_args.get('half', False) else '禁用'}\n") # Use .get() for safety
         results = model.train(**train_args)
         return results
     except Exception as e:
         print(f"Training error: {str(e)}")
+        # Consider logging the full traceback for debugging
+        import traceback
+        traceback.print_exc()
         return None
-
 
 def main():
     try:
@@ -627,38 +710,80 @@ def main():
             torch.cuda.empty_cache()
         data_dir = datapath
         # 1. 检查数据集
-
         print("Step 1: Checking dataset...")
         valid_pairs = check_and_clean_dataset(data_dir)
+        if not valid_pairs:
+             print("No valid data pairs found. Exiting.")
+             return # Exit if no data
         gc.collect()
-        # 2. 创建配置文件
 
+        # 2. 创建配置文件
         print("\nStep 2: Creating data.yaml...")
         create_data_yaml()
+        # Define data_yaml_path here for later use
+        project_path = os.path.dirname(os.path.abspath(__file__))
+        data_yaml_path = os.path.join(project_path, "data.yaml")
 
         # 3. 准备数据集
-
         print("\nStep 3: Preparing dataset...")
-        train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs)
-        gc.collect()
-        if val_size < 5:
-            raise ValueError(
-                f"Validation set too small ({val_size} images). Need at least 5 images."
-            )
-        # 4. 开始训练，启用混合精度训练和提前停止机制
-
-        print("\nStep 4: Starting training with mixed precision...")
-        train_yolo(
-            use_augmentation=True, 
-            use_mixed_precision=True, 
-            config="severmode", #个人PC不要用这个！！！
-            resume=False  # 使用resume=True来恢复训练
+        try:
+             train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs)
+             gc.collect()
+             if val_size < 5: # Check validation set size after preparation
+                 print(f"Warning: Validation set size ({val_size}) is less than 5. INT8 calibration might be suboptimal.")
+                 # Decide whether to raise an error or just warn
+                 # raise ValueError(f"Validation set too small ({val_size} images). Need at least 5 images for reliable validation/calibration.")
+        except ValueError as ve:
+             print(f"Error during dataset preparation: {ve}")
+             return # Exit if dataset prep fails critically
+        print("\nStep 4: Starting training...")
+        # Define your desired training config and resume flag
+        training_config = "severmode" # Example: Use 'severmode' config
+        resume_training = False       # Example: Start a new training run
+        results = train_yolo(
+            use_augmentation=True,      # Example: Enable augmentation
+            use_mixed_precision=True,   # Example: Enable mixed precision (often handled by config)
+            config=training_config,
+            resume=resume_training
         )
+        if results: # Check if training returned results (didn't fail)
+            print("\nStep 5: Saving different precision models based on best.pt...")
+            # Determine the path to the weights directory from the results object if possible
+            # Fallback to constructing the path if needed
+            weights_dir = None
+            if hasattr(results, 'save_dir'):
+                 weights_dir = os.path.join(results.save_dir, 'weights')
+                 print(f"Found weights directory from results: {weights_dir}")
+            else:
+                 # Fallback: Construct the expected path (less reliable if name/project changed)
+                 run_name = train_args.get('name', 'runs/train') # Get name from train_args if possible
+                 project = train_args.get('project', project_path)
+                 # Find the latest run directory based on the expected project/name structure
+                 run_dirs = sorted(Path(project).glob(f"{Path(run_name).name}*/"), key=os.path.getmtime, reverse=True)
+                 if run_dirs:
+                     latest_run_dir = run_dirs[0]
+                     weights_dir = os.path.join(latest_run_dir, 'weights')
+                     print(f"Constructed weights directory: {weights_dir}")
+                 else:
+                     print(f"Warning: Could not determine weights directory automatically.")
+
+            if weights_dir and os.path.isdir(weights_dir):
+                 save_quantized_models(weights_dir, data_yaml_path)
+            else:
+                 print(f"Warning: Weights directory '{weights_dir}' not found. Skipping post-training save.")
+        else:
+            print("\nTraining did not complete successfully or was interrupted. Skipping post-training model saving.")
     except Exception as e:
-        print(f"Error during execution: {str(e)}")
-        raise
-
-
+        print(f"\nAn error occurred in the main execution flow: {str(e)}")
+        # Log the full traceback for debugging
+        import traceback
+        traceback.print_exc()
+    finally: # Ensure final cleanup happens
+        print("\nScript finished. Cleaning up...")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
 if __name__ == "__main__":
     main()
 
