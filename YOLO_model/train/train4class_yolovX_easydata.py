@@ -534,7 +534,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             }
         )
     elif config == "severmode":
-        server_worker = os.cpu_count() / 2
+        server_worker = int(os.cpu_count() / 2)
         train_args.update({
             # 保留focus_accuracy的精度优化参数
             "box": 7.5,                # 提高边界框损失权重
