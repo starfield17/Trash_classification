@@ -20,22 +20,22 @@ def convert_json_label(input_file, output_file, verbose=False):
     # Mapping from specific categories to main categories
     category_mapping = {
         # Specific labels -> Main category
-        "potato": "Kitchen waste",
-        "daikon": "Kitchen waste",
-        "carrot": "Kitchen waste",
-        "bottle": "Recyclable waste",
-        "can": "Recyclable waste",
-        "battery": "Hazardous waste",
-        "drug": "Hazardous waste",
-        "inner_packing": "Hazardous waste",
-        "tile": "Other waste",
-        "stone": "Other waste",
-        "brick": "Other waste",
+        "potato": "Kitchen_waste",
+        "daikon": "Kitchen_waste",
+        "carrot": "Kitchen_waste",
+        "bottle": "Recyclable_waste",
+        "can": "Recyclable_waste",
+        "battery": "Hazardous_waste",
+        "drug": "Hazardous_waste",
+        "inner_packing": "Hazardous_waste",
+        "tile": "Other_waste",
+        "stone": "Other_waste",
+        "brick": "Other_waste",
         # Keep main categories as they are
-        "Kitchen waste": "Kitchen waste",
-        "Recyclable waste": "Recyclable waste",
-        "Hazardous waste": "Hazardous waste",
-        "Other waste": "Other waste"
+        "Kitchen waste": "Kitchen_waste",
+        "Recyclable waste": "Recyclable_waste",
+        "Hazardous waste": "Hazardous_waste",
+        "Other waste": "Other_waste"
     }
     
     try:
