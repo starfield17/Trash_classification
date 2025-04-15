@@ -391,7 +391,7 @@ def convert_labels(json_file, txt_file):
             "drug": 2,
             "inner_packing": 2,
             # 其他垃圾 (3)
-             "Other_waste": 3,
+            "Other_waste": 3,
             "tile": 3,
             "stone": 3,
             "brick": 3,
