@@ -431,88 +431,80 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
             )
 
 def save_quantized_models(weights_dir, data_yaml_path):
-    """Loads the best model and saves different precision versions."""
+    """加载最佳模型并保存不同精度的版本（FP32和FP16）"""
+    import shutil
+    
     best_pt_path = os.path.join(weights_dir, 'best.pt')
     if not os.path.exists(best_pt_path):
-        print(f"Error: {best_pt_path} not found. Cannot save quantized models.")
+        print(f"错误: {best_pt_path} 未找到，无法保存量化模型。")
         return
 
-    print(f"\nLoading best model from {best_pt_path} for post-training saving...")
+    print(f"\n正在从 {best_pt_path} 加载最佳模型...")
     try:
         model = YOLO(best_pt_path)
     except Exception as e:
-        print(f"Error loading model {best_pt_path}: {e}")
+        print(f"加载模型 {best_pt_path} 时出错: {e}")
         return
 
-    # Define output paths within the same weights directory
+    # 1. 保存FP32权重
     fp32_weights_path = os.path.join(weights_dir, 'best_fp32_weights.pt')
-    fp16_export_path = os.path.join(weights_dir, 'best_fp16_exported.pt')
-    int8_export_path = os.path.join(weights_dir, 'best_int8_exported.pt')
+    print(f"保存FP32权重到 {fp32_weights_path}...")
+    if hasattr(model, 'model') and hasattr(model.model, 'state_dict'):
+        torch.save(model.model.state_dict(), fp32_weights_path)
+        print("FP32权重已保存")
+    else:
+        # 兼容不同版本的Ultralytics
+        try:
+            torch.save(model.state_dict(), fp32_weights_path)
+            print("FP32 state_dict已保存")
+        except Exception as fallback_e:
+            print(f"警告: 无法直接访问模型权重，跳过FP32权重保存。错误: {fallback_e}")
 
-    project_path = Path(weights_dir).parent.parent # Get the project path (e.g., ./ )
+    # 2. 保存FP16模型（使用手动方式）
+    print("\n创建FP16模型...")
+    # 复制原始模型
+    fp16_model_path = os.path.join(weights_dir, 'best_fp16.pt')
+    shutil.copy(best_pt_path, fp16_model_path)
+    
+    # 加载副本并转换为FP16
+    fp16_model = YOLO(fp16_model_path)
+    if hasattr(fp16_model, 'model'):
+        fp16_model.model = fp16_model.model.half()
+        # 保存转换后的模型
+        fp16_model.save(fp16_model_path)
+        print(f"FP16模型已保存至 {fp16_model_path}")
+    else:
+        print("无法转换为FP16模型：模型结构不符合预期")
+    
+    # 清理内存
+    del fp16_model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
+    # 3. 导出TorchScript模型（可选但有用）
     try:
-        # 1. Save FP32 weights only
-        print(f"Saving FP32 weights only to {fp32_weights_path}...")
-        # Access the underlying PyTorch model state_dict
-        if hasattr(model, 'model') and hasattr(model.model, 'state_dict'):
-             torch.save(model.model.state_dict(), fp32_weights_path)
-             print("FP32 weights saved.")
-        else:
-             # Fallback for different ultralytics versions or model structures
-             try:
-                 torch.save(model.state_dict(), fp32_weights_path)
-                 print("FP32 state_dict saved (may include more than just weights).")
-             except Exception as fallback_e:
-                 print(f"Warning: Could not access model weights directly. Skipping FP32 weights save. Error: {fallback_e}")
-
-        # Ensure model is on the correct device for export (CPU or GPU)
-        export_device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        model.to(export_device)
-        print(f"Using device {export_device} for export.")
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        # 2. Export FP16 model
-        print(f"Exporting FP16 model to {fp16_export_path}...")
-        # Use file= kwarg to specify filename directly
-        model.export(format='pytorch', half=True, device=export_device, file=Path(fp16_export_path).stem) # Provide filename stem
-        print(f"FP16 model exported to {fp16_export_path}") # Log the actual expected path
-        gc.collect()
-        if torch.cuda.is_available():
-             torch.cuda.empty_cache()
-
-
-        # 3. Export INT8 model (requires calibration data from data.yaml)
-        print(f"Exporting INT8 model to {int8_export_path}...")
-        # Ensure the data yaml path is correct for calibration
-        if not os.path.exists(data_yaml_path):
-             print(f"Warning: data.yaml not found at {data_yaml_path}. INT8 calibration may fail or use defaults.")
-        # Use file= kwarg
-        model.export(format='pytorch', int8=True, data=data_yaml_path, device=export_device, file=Path(int8_export_path).stem) # Provide filename stem
-        print(f"INT8 model exported to {int8_export_path}") # Log the actual expected path
-        gc.collect()
-        if torch.cuda.is_available():
-             torch.cuda.empty_cache()
-
-        # 4. INT4 Quantization (Mention complexity)
-        print("\nNote: Direct INT4 PyTorch export ('best_q4.pt') is complex and often requires")
-        print("specialized libraries (like AutoGPTQ, AWQ) or conversion via ONNX/TensorRT.")
-        print("Skipping direct INT4 .pt export.")
-
+        print("\n尝试导出TorchScript格式模型...")
+        torchscript_results = model.export(format='torchscript')
+        if hasattr(torchscript_results, 'saved_model'):
+            ts_path = torchscript_results.saved_model
+            print(f"TorchScript模型已导出至: {ts_path}")
+            
+            # 移动到目标位置（如果导出位置不在weights_dir中）
+            if os.path.dirname(ts_path) != weights_dir:
+                ts_target_path = os.path.join(weights_dir, 'best.torchscript')
+                shutil.copy(ts_path, ts_target_path)
+                print(f"TorchScript模型已复制到: {ts_target_path}")
     except Exception as e:
-        print(f"\nError during model quantization/export: {e}")
-        print("Please ensure necessary libraries (like torch, onnx, onnxruntime, etc.) are installed")
-        print(f"and the data configuration in {data_yaml_path} is correct for INT8 calibration.")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Clean up GPU memory after export operations
-        del model
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        print(f"TorchScript导出失败: {e}")
+
+    print("\n模型导出和保存操作完成！")
+    
+    # 清理内存
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config="default", resume=False):
     """
