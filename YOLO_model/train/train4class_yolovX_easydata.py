@@ -152,44 +152,88 @@ def create_data_yaml():
     with open("data.yaml", "w", encoding="utf-8") as f:
         yaml.dump(data, f, sort_keys=False, allow_unicode=True)
 
+def try_create_symlink(src, dst):
+    """Try to create a symbolic link and return True if successful, False otherwise."""
+    try:
+        # Create the symbolic link
+        os.symlink(os.path.abspath(src), dst)
+        return True
+    except Exception as e:
+        print(f"Warning: Could not create symbolic link from {src} to {dst}: {e}")
+        return False
 
-def process_split(split_name, files, data_dir):
-    """Processes image copying and label conversion for a given dataset split."""
+
+def process_split(split_name, files, data_dir, use_symlinks=True):
+    """
+    Processes image copying/linking and label conversion for a given dataset split.
+    
+    Args:
+        split_name: Name of the split (train, val, test)
+        files: List of image filenames to process
+        data_dir: Source directory containing the original files
+        use_symlinks: Whether to try using symbolic links instead of copying (default: True)
+    """
     print(f"\nProcessing {split_name} split...")
     split_img_dir = os.path.join(split_name, "images")
     split_lbl_dir = os.path.join(split_name, "labels")
 
-    # Ensure target directories exist (though prepare_dataset already creates them)
+    # Ensure target directories exist
     os.makedirs(split_img_dir, exist_ok=True)
     os.makedirs(split_lbl_dir, exist_ok=True)
+    
+    # First file - try to create a symlink to test if it works
+    symlinks_working = False
+    if use_symlinks and files:
+        test_img = os.path.join(data_dir, files[0])
+        test_dst = os.path.join(split_img_dir, "test_symlink_" + files[0])
+        symlinks_working = try_create_symlink(test_img, test_dst)
+        
+        # Clean up the test link
+        if os.path.exists(test_dst):
+            os.remove(test_dst)
+    
+    print(f"{split_name}: Using {'symbolic links' if symlinks_working else 'file copying'} for dataset preparation")
 
     for img_file in files:
         base_name = os.path.splitext(img_file)[0]
         src_img = os.path.join(data_dir, img_file)
         src_json = os.path.join(data_dir, base_name + ".json")
-        dst_img = os.path.join(split_img_dir, img_file) # Corrected destination path
-        dst_txt = os.path.join(split_lbl_dir, base_name + ".txt") # Corrected destination path
+        dst_img = os.path.join(split_img_dir, img_file)
+        dst_txt = os.path.join(split_lbl_dir, base_name + ".txt")
 
-        # Copy image and convert label
-        # Error handling during conversion is inside convert_labels
+        # Process the image and label files
         if os.path.exists(src_img) and os.path.exists(src_json):
             try:
-                shutil.copy2(src_img, dst_img)
+                # Handle the image file - try symlink first if enabled
+                if symlinks_working:
+                    if not try_create_symlink(src_img, dst_img):
+                        # If symlink creation fails, fall back to copying
+                        shutil.copy2(src_img, dst_img)
+                else:
+                    # Use direct copy if symlinks aren't working
+                    shutil.copy2(src_img, dst_img)
+                
+                # Convert the label (no need to change this part)
                 convert_labels(src_json, dst_txt)
             except Exception as e:
                 print(f"Error processing file pair ({img_file}, {base_name}.json): {e}")
         else:
             if not os.path.exists(src_img):
-                 print(f"Warning: Source image not found during split processing: {src_img}")
+                print(f"Warning: Source image not found during split processing: {src_img}")
             if not os.path.exists(src_json):
-                 print(f"Warning: Source JSON not found during split processing: {src_json}")
-
+                print(f"Warning: Source JSON not found during split processing: {src_json}")
 
     print(f"{split_name}: Processed {len(files)} potential images")
 
 
-def prepare_dataset(data_dir, valid_pairs):
-    """准备数据集 - 修改验证集划分比例 (增强版，处理非空目录)"""
+def prepare_dataset(data_dir, valid_pairs, use_symlinks=True):
+    """准备数据集 - 支持使用符号链接而不是复制文件来节省空间
+    
+    Args:
+        data_dir: 包含图像和标签文件的源目录
+        valid_pairs: 有效的图像文件名列表
+        use_symlinks: 是否尝试使用符号链接而不是复制文件 (默认: True)
+    """
     # 确保验证集至少有10张图片
     if len(valid_pairs) < 15:
         raise ValueError(
@@ -260,9 +304,9 @@ def prepare_dataset(data_dir, valid_pairs):
     # 确定worker数量，为其他任务保留一些核心
     max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 为每个划分提交任务
+        # 为每个划分提交任务，包括use_symlinks参数
         futures = {
-            executor.submit(process_split, split_name, files, data_dir): split_name
+            executor.submit(process_split, split_name, files, data_dir, use_symlinks): split_name
             for split_name, files in splits.items()
         }
 
@@ -279,7 +323,6 @@ def prepare_dataset(data_dir, valid_pairs):
     print("\n数据集准备完成。")
     print(f"训练集: {len(train_files)} 图片, 验证集: {len(val_files)} 图片, 测试集: {len(test_files)} 图片")
     return len(train_files), len(val_files), len(test_files)
-
 
 def convert_bbox_to_yolo(bbox, img_width, img_height):
     """转换边界框从x1,y1,x2,y2到YOLO格式"""
@@ -701,6 +744,7 @@ def main():
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         data_dir = datapath
+        
         # 1. 检查数据集
         print("Step 1: Checking dataset...")
         valid_pairs = check_and_clean_dataset(data_dir)
@@ -716,18 +760,18 @@ def main():
         project_path = os.path.dirname(os.path.abspath(__file__))
         data_yaml_path = os.path.join(project_path, "data.yaml")
 
-        # 3. 准备数据集
-        print("\nStep 3: Preparing dataset...")
+        # 3. 准备数据集 - 使用软链接
+        print("\nStep 3: Preparing dataset with symbolic links...")
         try:
-             train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs)
+             # 启用符号链接选项
+             train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs, use_symlinks=True)
              gc.collect()
              if val_size < 5: # Check validation set size after preparation
                  print(f"Warning: Validation set size ({val_size}) is less than 5. INT8 calibration might be suboptimal.")
-                 # Decide whether to raise an error or just warn
-                 # raise ValueError(f"Validation set too small ({val_size} images). Need at least 5 images for reliable validation/calibration.")
         except ValueError as ve:
              print(f"Error during dataset preparation: {ve}")
              return # Exit if dataset prep fails critically
+        
         print("\nStep 4: Starting training...")
         # Define your desired training config and resume flag
         training_config = "severmode" # Example: Use 'severmode' config
@@ -738,6 +782,7 @@ def main():
             config=training_config,
             resume=resume_training
         )
+        
         if results: # Check if training returned results (didn't fail)
             print("\nStep 5: Saving different precision models based on best.pt...")
             # Determine the path to the weights directory from the results object if possible
