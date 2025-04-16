@@ -474,7 +474,7 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
             )
 
 def save_quantized_models(weights_dir, data_yaml_path):
-    """加载最佳模型并保存不同精度的版本（FP32和FP16）"""
+    """加载最佳模型并保存FP16版本"""
     import shutil
     
     best_pt_path = os.path.join(weights_dir, 'best.pt')
@@ -489,21 +489,9 @@ def save_quantized_models(weights_dir, data_yaml_path):
         print(f"加载模型 {best_pt_path} 时出错: {e}")
         return
 
-    # 1. 保存FP32权重
-    fp32_weights_path = os.path.join(weights_dir, 'best_fp32_weights.pt')
-    print(f"保存FP32权重到 {fp32_weights_path}...")
-    if hasattr(model, 'model') and hasattr(model.model, 'state_dict'):
-        torch.save(model.model.state_dict(), fp32_weights_path)
-        print("FP32权重已保存")
-    else:
-        # 兼容不同版本的Ultralytics
-        try:
-            torch.save(model.state_dict(), fp32_weights_path)
-            print("FP32 state_dict已保存")
-        except Exception as fallback_e:
-            print(f"警告: 无法直接访问模型权重，跳过FP32权重保存。错误: {fallback_e}")
+    # 已移除FP32权重保存部分
 
-    # 2. 保存FP16模型（使用手动方式）
+    # 创建FP16模型
     print("\n创建FP16模型...")
     # 复制原始模型
     fp16_model_path = os.path.join(weights_dir, 'best_fp16.pt')
@@ -525,7 +513,7 @@ def save_quantized_models(weights_dir, data_yaml_path):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # 3. 导出TorchScript模型（可选但有用）
+    # 导出TorchScript模型（可选但有用）
     try:
         print("\n尝试导出TorchScript格式模型...")
         torchscript_results = model.export(format='torchscript')
@@ -724,20 +712,33 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
         train_args.update({"half": True})
     else:
         train_args.update({"half": False})
-    # 开始训练并传入所有参数
     try:
         print(f"\n使用设备: {'GPU' if device == '0' else 'CPU'}")
         print(f"Batch size: {train_args['batch']}")
-        print(f"混合精度训练: {'启用' if train_args.get('half', False) else '禁用'}\n") # Use .get() for safety
+        print(f"混合精度训练: {'启用' if train_args.get('half', False) else '禁用'}\n")
         results = model.train(**train_args)
+        
+        # Force saving a best.pt if training was resumed
+        if resume:
+            print("\n检测到resume=True，确保保存最终模型到best.pt...")
+            run_dir = results.save_dir if hasattr(results, 'save_dir') else train_args.get('project', '') + '/' + train_args.get('name', 'runs/train')
+            weights_dir = os.path.join(run_dir, 'weights')
+            last_pt_path = os.path.join(weights_dir, 'last.pt')
+            best_pt_path = os.path.join(weights_dir, 'best.pt')
+            
+            if os.path.exists(last_pt_path):
+                # 复制 last.pt 到 best.pt，确保总有最新的模型可用于后处理
+                if not os.path.exists(best_pt_path) or resume:
+                    print(f"将 {last_pt_path} 复制到 {best_pt_path}...")
+                    shutil.copy2(last_pt_path, best_pt_path)
+                    print(f"成功保存最终模型到 {best_pt_path}")
+        
         return results
     except Exception as e:
         print(f"Training error: {str(e)}")
-        # Consider logging the full traceback for debugging
         import traceback
         traceback.print_exc()
         return None
-
 def main():
     try:
         gc.collect()
