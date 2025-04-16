@@ -558,10 +558,12 @@ class DetectionService:
                 trainable_layers=3
             )
             
-            # 设置RPN的锚点生成器
+            # 设置RPN的锚点生成器 - 修改这里以匹配多个特征图层
             anchor_generator = AnchorGenerator(
-                sizes=((32, 64, 128, 256, 512),),
-                aspect_ratios=((0.5, 1.0, 2.0),)
+                # 为每个特征图层指定单独的锚点尺寸
+                sizes=((32,), (64,), (128,), (256,), (512,)),
+                # 为每个特征图层重复相同的比例配置
+                aspect_ratios=((0.5, 1.0, 2.0),) * 5
             )
             
             # 设置RoI池化的大小
