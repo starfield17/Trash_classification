@@ -694,7 +694,7 @@ def main():
         )
         
         # 训练轮数
-        num_epochs = min(max(10, len(train_files) // 10), 50)
+        num_epochs = min(max(10, len(train_files) // 10), 200)
         print(f"将训练{num_epochs}个周期")
         
         # 6. 开始训练
