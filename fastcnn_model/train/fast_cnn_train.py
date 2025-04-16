@@ -375,7 +375,6 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
         model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
-    
     elif model_type == "resnet18_fpn":
         # 轻量版：ResNet18+FPN
         backbone = resnet_fpn_backbone(
@@ -384,10 +383,12 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
             trainable_layers=3
         )
         
-        # 设置RPN的锚点生成器
+        # 设置RPN的锚点生成器 - 修改这里以匹配多个特征图层
         anchor_generator = AnchorGenerator(
-            sizes=((32, 64, 128, 256, 512),),
-            aspect_ratios=((0.5, 1.0, 2.0),)
+            # 为每个特征图层指定单独的锚点尺寸
+            sizes=((32,), (64,), (128,), (256,), (512,)),
+            # 为每个特征图层重复相同的比例配置
+            aspect_ratios=((0.5, 1.0, 2.0),) * 5
         )
         
         # 设置RoI池化的大小
@@ -404,7 +405,6 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler
         )
-    
     elif model_type == "mobilenet_v3":
         # 超轻量版：MobileNetV3
         model = fasterrcnn_mobilenet_v3_large_fpn(weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT)
