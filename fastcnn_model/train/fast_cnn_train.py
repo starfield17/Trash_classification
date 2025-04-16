@@ -442,6 +442,12 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
     running_loss_obj = 0.0
     running_loss_rpn = 0.0
     
+    total_loss = 0.0
+    total_loss_cls = 0.0
+    total_loss_box = 0.0
+    total_loss_obj = 0.0
+    total_loss_rpn = 0.0
+    
     start_time = time.time()
     
     for i, (images, targets) in enumerate(tqdm(data_loader, desc=f"Epoch {epoch}")):
@@ -458,6 +464,13 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
         loss_box_reg = loss_dict['loss_box_reg'].item() if 'loss_box_reg' in loss_dict else 0
         loss_objectness = loss_dict['loss_objectness'].item() if 'loss_objectness' in loss_dict else 0
         loss_rpn_box_reg = loss_dict['loss_rpn_box_reg'].item() if 'loss_rpn_box_reg' in loss_dict else 0
+        
+        # 累计总损失，用于计算epoch平均损失
+        total_loss += loss_value
+        total_loss_cls += loss_classifier  
+        total_loss_box += loss_box_reg
+        total_loss_obj += loss_objectness
+        total_loss_rpn += loss_rpn_box_reg
         
         running_loss += loss_value
         running_loss_cls += loss_classifier
@@ -500,25 +513,67 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
             start_time = time.time()
     
     # 计算周期的平均损失
-    epoch_loss = metric_logger["loss"] / len(data_loader)
+    num_batches = len(data_loader)
+    epoch_loss = total_loss / num_batches
+    epoch_loss_cls = total_loss_cls / num_batches
+    epoch_loss_box = total_loss_box / num_batches
+    epoch_loss_obj = total_loss_obj / num_batches
+    epoch_loss_rpn = total_loss_rpn / num_batches
+    
+    # 更新并返回指标
+    metric_logger["loss"] = epoch_loss
+    metric_logger["loss_classifier"] = epoch_loss_cls
+    metric_logger["loss_box_reg"] = epoch_loss_box
+    metric_logger["loss_objectness"] = epoch_loss_obj
+    metric_logger["loss_rpn_box_reg"] = epoch_loss_rpn
+    
     return metric_logger
-
-
 def evaluate(model, data_loader, device):
     """评估模型"""
     model.eval()
+    
+    total_loss = 0.0
+    total_loss_cls = 0.0
+    total_loss_box = 0.0
+    total_loss_obj = 0.0
+    total_loss_rpn = 0.0
+    num_batches = len(data_loader)
     
     with torch.no_grad():
         for images, targets in tqdm(data_loader, desc="Evaluation"):
             images = list(img.to(device) for img in images)
             targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
             
-            # 推理
-            model(images)
+            # 在评估时计算损失需要临时切换到训练模式
+            model.train()
+            loss_dict = model(images, targets)
+            model.eval()  # 立即切换回评估模式
+            
+            losses = sum(loss for loss in loss_dict.values())
+            
+            # 累计损失
+            loss_value = losses.item()
+            loss_classifier = loss_dict['loss_classifier'].item() if 'loss_classifier' in loss_dict else 0
+            loss_box_reg = loss_dict['loss_box_reg'].item() if 'loss_box_reg' in loss_dict else 0
+            loss_objectness = loss_dict['loss_objectness'].item() if 'loss_objectness' in loss_dict else 0
+            loss_rpn_box_reg = loss_dict['loss_rpn_box_reg'].item() if 'loss_rpn_box_reg' in loss_dict else 0
+            
+            total_loss += loss_value
+            total_loss_cls += loss_classifier
+            total_loss_box += loss_box_reg
+            total_loss_obj += loss_objectness
+            total_loss_rpn += loss_rpn_box_reg
     
-    # 简化版的评估，仅通过前向传播检查模型是否工作
-    print("评估完成")
-    return {}
+    # 计算平均损失
+    metrics = {}
+    metrics["loss"] = total_loss / num_batches
+    metrics["loss_classifier"] = total_loss_cls / num_batches
+    metrics["loss_box_reg"] = total_loss_box / num_batches
+    metrics["loss_objectness"] = total_loss_obj / num_batches
+    metrics["loss_rpn_box_reg"] = total_loss_rpn / num_batches
+    
+    return metrics
+
 
 
 def save_optimized_model(model, output_dir, device, model_type):
@@ -609,6 +664,7 @@ def save_optimized_model(model, output_dir, device, model_type):
     return model_path
 
 
+
 def main():
     """主函数"""
     try:
@@ -694,15 +750,28 @@ def main():
         )
         
         # 训练轮数
-        num_epochs = min(max(10, len(train_files) // 10), 200)
-        print(f"将训练{num_epochs}个周期")
+        num_epochs = min(max(10, len(train_files) // 10), 100)
+        print(f"将训练最多{num_epochs}个周期，启用早停机制")
         
         # 6. 开始训练
         print("\nStep 6: 开始训练Faster R-CNN模型...")
         output_dir = "./output"
         os.makedirs(output_dir, exist_ok=True)
         
-        best_loss = float('inf')
+        # 早停参数设置
+        best_val_loss = float('inf')
+        patience = 5  # 如果连续5个epoch验证损失没有改善，则停止训练
+        min_delta = 0.001  # 最小改进阈值
+        counter = 0  # 计数器，记录连续没有改善的epoch数
+        early_stopped = False
+        
+        # 记录训练历史
+        history = {
+            'train_loss': [],
+            'val_loss': [],
+            'learning_rates': []
+        }
+        
         start_time = time.time()
         
         for epoch in range(num_epochs):
@@ -711,29 +780,73 @@ def main():
                 model, optimizer, train_loader, device, epoch
             )
             
+            # 获取当前学习率
+            current_lr = optimizer.param_groups[0]['lr']
+            
+            # 评估验证集
+            val_metrics = evaluate(model, val_loader, device)
+            
             # 更新学习率
             lr_scheduler.step()
             
-            # 定期评估和保存
-            if epoch % 5 == 0 or epoch == num_epochs - 1:
-                # 评估
-                evaluate(model, val_loader, device)
+            # 记录训练历史
+            history['train_loss'].append(train_metrics['loss'])
+            history['val_loss'].append(val_metrics['loss'])
+            history['learning_rates'].append(current_lr)
+            
+            # 打印训练信息
+            print(f"\n----- Epoch {epoch}/{num_epochs-1} 训练结果 -----")
+            print(f"学习率: {current_lr:.6f}")
+            print(f"训练损失: {train_metrics['loss']:.4f}")
+            print(f"  分类损失: {train_metrics['loss_classifier']:.4f}")
+            print(f"  框回归损失: {train_metrics['loss_box_reg']:.4f}")
+            print(f"  目标性损失: {train_metrics['loss_objectness']:.4f}")
+            print(f"  RPN框回归损失: {train_metrics['loss_rpn_box_reg']:.4f}")
+            print(f"验证损失: {val_metrics['loss']:.4f}")
+            print(f"  分类损失: {val_metrics['loss_classifier']:.4f}")
+            print(f"  框回归损失: {val_metrics['loss_box_reg']:.4f}")
+            print(f"  目标性损失: {val_metrics['loss_objectness']:.4f}")
+            print(f"  RPN框回归损失: {val_metrics['loss_rpn_box_reg']:.4f}")
+            
+            # 保存检查点
+            checkpoint_path = os.path.join(output_dir, f"model_epoch_{epoch}.pth")
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'lr_scheduler_state_dict': lr_scheduler.state_dict(),
+                'train_loss': train_metrics['loss'],
+                'val_loss': val_metrics['loss'],
+                'history': history
+            }, checkpoint_path)
+            
+            # 更新最佳模型
+            if val_metrics['loss'] < best_val_loss - min_delta:
+                print(f"验证损失从 {best_val_loss:.4f} 改善到 {val_metrics['loss']:.4f}. 保存最佳模型...")
+                best_val_loss = val_metrics['loss']
+                counter = 0
+                # 保存最佳模型
+                best_model_path = os.path.join(output_dir, "model_best.pth")
+                torch.save(model.state_dict(), best_model_path)
+            else:
+                counter += 1
+                print(f"验证损失未改善. 耐心计数: {counter}/{patience}")
                 
-                # 保存检查点
-                checkpoint_path = os.path.join(output_dir, f"model_epoch_{epoch}.pth")
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'lr_scheduler_state_dict': lr_scheduler.state_dict()
-                }, checkpoint_path)
-                print(f"检查点已保存至: {checkpoint_path}")
+                if counter >= patience:
+                    print(f"\n早停! {patience} 个epoch内验证损失未改善.")
+                    early_stopped = True
+                    break
         
         # 计算总训练时间
         total_time = time.time() - start_time
         hours, remainder = divmod(total_time, 3600)
         minutes, seconds = divmod(remainder, 60)
-        print(f"\n训练完成！总训练时间: {int(hours)}小时 {int(minutes)}分钟 {int(seconds)}秒")
+        print(f"\n训练{'已提前停止' if early_stopped else '完成'}！总训练时间: {int(hours)}小时 {int(minutes)}分钟 {int(seconds)}秒")
+        
+        # 如果是提前停止，加载最佳模型
+        if early_stopped:
+            print(f"加载最佳模型 (epoch {epoch - patience})...")
+            model.load_state_dict(torch.load(best_model_path))
         
         # 7. 保存最终模型和优化的部署版本
         print("\nStep 7: 保存和优化模型用于部署...")
@@ -741,6 +854,7 @@ def main():
         
         print(f"\n训练完成！模型已保存在 {output_dir} 目录中。")
         print(f"最终模型路径: {model_path}")
+        print(f"最佳验证损失: {best_val_loss:.4f}")
         print("可以在树莓派上使用保存的ONNX或TorchScript模型进行部署。")
         
     except Exception as e:
@@ -752,7 +866,6 @@ def main():
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-
 
 if __name__ == "__main__":
     main()
