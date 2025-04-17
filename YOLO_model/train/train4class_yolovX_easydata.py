@@ -651,7 +651,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             "cls": 4.0,                # 提高分类损失权重
             "dfl": 3.0,                # 提高DFL损失权重
             "patience": 150,           # 保持高容忍度确保最佳精度
-            "epochs": 300,             # 保持较长训练周期
+            "epochs": 150,             # 保持较长训练周期
             "dropout": 0.1,            # 保留dropout防止过拟合
             # 服务器性能优化参数
             "imgsz": 640,             
@@ -682,12 +682,12 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             "scale": 0.2,  # 随机缩放的比例范围
             "fliplr": 0.2,  # 随机水平翻转的概率
             "flipud": 0.2,  # 随机垂直翻转的概率
-            "hsv_h": 0.03,  # 随机调整色调的范围
-            "hsv_s": 0.2,  # 随机调整饱和度的范围
-            "hsv_v": 0.1,  # 随机调整明度的范围
-            "mosaic": 0.1,  # 马赛克增强的比例
-            "mixup": 0.1,  # 混合增强的比例
-            "copy_paste": 0.05,  # 复制粘贴增强的比例
+            #"hsv_h": 0.03,  # 随机调整色调的范围
+            #"hsv_s": 0.2,  # 随机调整饱和度的范围
+            #"hsv_v": 0.1,  # 随机调整明度的范围
+            #"mosaic": 0.1,  # 马赛克增强的比例
+            #"mixup": 0.1,  # 混合增强的比例
+            #"copy_paste": 0.05,  # 复制粘贴增强的比例
         }
         train_args.update(augmentation_args)
     else:
