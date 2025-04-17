@@ -27,7 +27,7 @@ from tqdm import tqdm
 datapath = "./label"
 
 # 选择模型类型
-MODEL_TYPE = "resnet50_fpn"  # 标准版: "resnet50_fpn", 轻量版: "resnet18_fpn", 超轻量版: "mobilenet_v3" , 超超轻量版: "shufflenet_v2", 微型版: "squeezenet"
+MODEL_TYPE = "resnet50_fpn"  # 标准版: "resnet50_fpn", 轻量版: "resnet18_fpn", 超轻量版: "mobilenet_v3" , 超超轻量版: "shufflenet_v2",
 
 # 四分类垃圾数据集配置
 CATEGORY_MAPPING = {
@@ -412,103 +412,67 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
         
-    elif model_type == "shufflenet_v2":
-        # 极轻量级：ShuffleNetV2 (仅10-15MB)
-        shufflenet = torchvision.models.shufflenet_v2_x0_5(weights='DEFAULT')
-        
-        # ShuffleNetV2没有.features属性，需要手动创建特征提取器
-        from collections import OrderedDict
-        from torch import nn
-        
-        # 创建从不同阶段输出特征的特征提取器
-        backbone = nn.Sequential(OrderedDict([
-            ('conv1', shufflenet.conv1),
-            ('maxpool', shufflenet.maxpool),
-            ('stage2', shufflenet.stage2),
-            ('stage3', shufflenet.stage3),
-            ('stage4', shufflenet.stage4)
-        ]))
-        
-        # 定义从哪些层提取特征
-        return_layers = {'maxpool': '0', 'stage2': '1', 'stage3': '2', 'stage4': '3'}
-        backbone = torchvision.models._utils.IntermediateLayerGetter(backbone, return_layers)
-        
-        # ShuffleNetV2 x0.5的各阶段输出通道数
-        in_channels_list = [24, 48, 96, 192]
-        out_channels = 96  # 减少到96以降低模型大小
-        
-        backbone_with_fpn = torchvision.models.detection.backbone_utils.BackboneWithFPN(
-            backbone, return_layers, in_channels_list, out_channels
-        )
-        
-        # 极简锚点配置
-        anchor_generator = AnchorGenerator(
-            sizes=((32,), (64,), (128,), (256,)),
-            aspect_ratios=((0.5, 1.0, 2.0),) * 4
-        )
-        
-        # 极简RoI池化
-        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
-            featmap_names=['0', '1', '2', '3'],
-            output_size=4,  # 进一步降低到4以减少计算
-            sampling_ratio=1
-        )
-        
-        # 构建超轻量级Faster R-CNN
-        model = FasterRCNN(
-            backbone=backbone_with_fpn,
-            num_classes=num_classes_with_bg,
-            rpn_anchor_generator=anchor_generator,
-            box_roi_pool=roi_pooler,
-            rpn_pre_nms_top_n_test=50,  # 进一步减少RPN候选框
-            rpn_post_nms_top_n_test=50, 
-            box_score_thresh=0.05,
-            box_nms_thresh=0.45
-        )
+elif model_type == "shufflenet_v2":
+    # 极轻量级：ShuffleNetV2 (仅10-15MB)
+    shufflenet = torchvision.models.shufflenet_v2_x0_5(weights='DEFAULT')
     
-    elif model_type == "squeezenet":
-        # 超微型：SqueezeNet (仅5-8MB)
-        backbone = torchvision.models.squeezenet1_1(pretrained=True).features
-        
-        # 为FPN准备返回层
-        return_layers = {'2': '0', '5': '1', '8': '2', '10': '3'}
-        backbone = torchvision.models._utils.IntermediateLayerGetter(backbone, return_layers)
-        
-        # SqueezeNet1.1的通道数
-        in_channels_list = [16, 128, 256, 512]
-        out_channels = 64  # 极小的特征通道数
-        
-        backbone_with_fpn = torchvision.models.detection.backbone_utils.BackboneWithFPN(
-            backbone, return_layers, in_channels_list, out_channels
-        )
-        
-        # 极简锚点配置
-        anchor_generator = AnchorGenerator(
-            sizes=((32,), (64,), (128,)),  # 进一步减少锚点大小种类
-            aspect_ratios=((0.5, 1.0, 2.0),) * 3  # 减少特征图层数
-        )
-        
-        # 极简RoI池化
-        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
-            featmap_names=['0', '1', '2'],
-            output_size=3,  # 使用最小的池化尺寸
-            sampling_ratio=1
-        )
-        
-        # 构建最轻量级Faster R-CNN
-        model = FasterRCNN(
-            backbone=backbone_with_fpn,
-            num_classes=num_classes_with_bg,
-            rpn_anchor_generator=anchor_generator,
-            box_roi_pool=roi_pooler,
-            rpn_pre_nms_top_n_test=30,  # 最小候选框数量
-            rpn_post_nms_top_n_test=20,
-            box_score_thresh=0.05,
-            box_nms_thresh=0.4,
-            min_size=300,  # 缩小最小输入尺寸
-            max_size=400   # 缩小最大输入尺寸
-        )
-        
+    # 创建从不同阶段输出特征的特征提取器
+    backbone = nn.Sequential(OrderedDict([
+        ('conv1', shufflenet.conv1),
+        ('maxpool', shufflenet.maxpool),
+        ('stage2', shufflenet.stage2),
+        ('stage3', shufflenet.stage3),
+        ('stage4', shufflenet.stage4)
+    ]))
+    
+    # 重要：确保return_layers中的键与backbone中的层名称匹配
+    # 确保我们从所有需要的层提取特征
+    return_layers = {'maxpool': '0', 'stage2': '1', 'stage3': '2', 'stage4': '3'}
+    backbone = torchvision.models._utils.IntermediateLayerGetter(backbone, return_layers)
+    
+    # ShuffleNetV2 x0.5的各阶段输出通道数
+    in_channels_list = [24, 48, 96, 192]
+    out_channels = 96  # 减少到96以降低模型大小
+    
+    backbone_with_fpn = torchvision.models.detection.backbone_utils.BackboneWithFPN(
+        backbone, return_layers, in_channels_list, out_channels
+    )
+    
+    # 验证FPN输出有多少个特征图层
+    # 对于ShuffleNetV2配置，应该有4个输出层：'0', '1', '2', '3'
+    
+    # 确保锚点配置匹配FPN输出的特征图层数量
+    # 每个特征图层需要有一个尺寸元组和一个纵横比元组
+    anchor_generator = AnchorGenerator(
+        # 关键修改：确保每个层都有自己的配置
+        sizes=((32,), (64,), (128,), (256,)),
+        aspect_ratios=((0.5, 1.0, 2.0),) * 4  # 4个特征图层，每个有3个纵横比
+    )
+    
+    # 确保RoI池化层匹配特征图层
+    roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+        featmap_names=['0', '1', '2', '3'],  # 必须匹配return_layers中的值
+        output_size=4,
+        sampling_ratio=1
+    )
+    
+    # 构建Faster R-CNN模型
+    model = FasterRCNN(
+        backbone=backbone_with_fpn,
+        num_classes=num_classes_with_bg,
+        rpn_anchor_generator=anchor_generator,
+        box_roi_pool=roi_pooler,
+        # 减少候选框数量以提高速度
+        rpn_pre_nms_top_n_train=150,  # 默认2000
+        rpn_post_nms_top_n_train=150,  # 默认1000 
+        rpn_pre_nms_top_n_test=50,    # 默认1000
+        rpn_post_nms_top_n_test=50,   # 默认1000
+        # 降低阈值以保持良好召回率
+        rpn_nms_thresh=0.65,          # 默认0.7
+        box_score_thresh=0.05,        # 默认0.05
+        box_nms_thresh=0.45,          # 默认0.5
+        min_size=150                  # 减小最小物体大小，加速处理
+    )
     else:
         raise ValueError(f"不支持的模型类型: {model_type}")
     
