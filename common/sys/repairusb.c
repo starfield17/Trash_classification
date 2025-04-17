@@ -97,7 +97,6 @@ int main() {
         return 1;
     }
     printf("Starting USB rescanning program...\n");
-    sleep(5);
     if (!is_module_loaded("ch341")) {
         printf("Loading ch341 module...\n");
         load_module("ch341");
