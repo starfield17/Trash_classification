@@ -744,10 +744,12 @@ def main():
         )
         
         # 学习率调度器
-        lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
-            step_size=3,
-            gamma=0.1
+            mode='min',
+            factor=0.5,     # 平稳时降低一半
+            patience=3,     # 等待3个周期再降低
+            min_lr=1e-6     # 不低于这个值
         )
         
         # 训练轮数
@@ -788,7 +790,7 @@ def main():
             val_metrics = evaluate(model, val_loader, device)
             
             # 更新学习率
-            lr_scheduler.step()
+            lr_scheduler.step(val_metrics['loss'])
             
             # 记录训练历史
             history['train_loss'].append(train_metrics['loss'])
