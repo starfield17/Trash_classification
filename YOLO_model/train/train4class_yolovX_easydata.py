@@ -13,7 +13,7 @@ import gc
 import torch
 from concurrent.futures import ThreadPoolExecutor
 
-select_model = "yolo12n.pt"  # 选择的模型,默认为yolo12n,可以更改
+select_model = "yolo12s.pt"  # 选择的模型,默认为yolo12s,可以更改
 datapath = "./label"  # 根据实际情况修改
 
 def validate_json_file(json_path):
@@ -625,7 +625,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
                 "box": 7.5,
                 "cls": 4.0,
                 "dfl": 3.0,
-                "patience": 150,
+                "patience": 20,
                 "batch": 16 if device == "0" else 4,  # GPU使用16，CPU使用4
                 "epochs": 300,
                 "lr0": 0.001,
@@ -650,7 +650,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
             "box": 7.5,                # 提高边界框损失权重
             "cls": 4.0,                # 提高分类损失权重
             "dfl": 3.0,                # 提高DFL损失权重
-            "patience": 150,           # 保持高容忍度确保最佳精度
+            "patience": 15,            # 保持高容忍度确保最佳精度
             "epochs": 150,             # 保持较长训练周期
             "dropout": 0.1,            # 保留dropout防止过拟合
             # 服务器性能优化参数
