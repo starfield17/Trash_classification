@@ -761,7 +761,7 @@ def main():
         
         # 早停参数设置
         best_val_loss = float('inf')
-        patience = 5  # 如果连续5个epoch验证损失没有改善，则停止训练
+        patience = 10  # 如果连续10个epoch验证损失没有改善，则停止训练
         min_delta = 0.001  # 最小改进阈值
         counter = 0  # 计数器，记录连续没有改善的epoch数
         early_stopped = False
