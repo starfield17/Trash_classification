@@ -6,6 +6,7 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
@@ -13,7 +14,7 @@ from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 CLASS_NAMES = ["厨余垃圾", "可回收垃圾", "有害垃圾", "其他垃圾"]
 
 # 选择要使用的模型类型，确保与训练时一致
-MODEL_TYPE = "resnet50_fpn"  # 可选: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3"
+MODEL_TYPE = "resnet50_fpn"  # 可选: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
 
 
 def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
@@ -59,7 +60,10 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
         model = fasterrcnn_mobilenet_v3_large_fpn(weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT)
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
-        
+    elif model_type == "_v2":
+        model = fasterrcnn__v2(weights=FasterRCNN__V2_Weights.DEFAULT)
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
     else:
         raise ValueError(f"不支持的模型类型: {model_type}")
     
@@ -214,7 +218,7 @@ if __name__ == "__main__":
     parser.add_argument('--out_dir', type=str, default='./output/final_model',
                         help='输出目录 (默认: ./output/final_model)')
     parser.add_argument('--model_type', type=str, default=MODEL_TYPE,
-                        choices=['resnet50_fpn', 'resnet18_fpn', 'mobilenet_v3'],
+                        choices=['resnet50_fpn', 'resnet18_fpn', 'mobilenet_v3', 'resnet50_fpn_v2'],
                         help=f'模型类型 (默认: {MODEL_TYPE})')
     
     # 解析命令行参数
