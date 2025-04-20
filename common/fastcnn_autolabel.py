@@ -16,6 +16,7 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from torchvision.models.resnet import resnet18, resnet34
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
@@ -40,7 +41,7 @@ class FastCNNAutoLabeler:
         Args:
             model_path: Faster R-CNN模型文件路径(.pth)
             confidence_threshold: 保留检测结果的最小置信度
-            model_type: 使用的骨干网络类型("resnet50_fpn", "resnet18_fpn", 或 "mobilenet_v3")
+            model_type: 使用的骨干网络类型("resnet50_fpn", "resnet50_fpn_v2", "resnet18_fpn", 或 "mobilenet_v3")
             iou_threshold: 用于NMS的IoU阈值，超过该值的框被认为重叠
         """
         # 保存IoU阈值
@@ -96,7 +97,7 @@ class FastCNNAutoLabeler:
         
         Args:
             num_classes: 模型中的类别数
-            model_type: 使用的骨干网络类型("resnet50_fpn", "resnet18_fpn", 或 "mobilenet_v3")
+            model_type: 使用的骨干网络类型("resnet50_fpn", "resnet50_fpn_v2", "resnet18_fpn", 或 "mobilenet_v3")
             
         Returns:
             FasterRCNN: Faster R-CNN模型
@@ -140,9 +141,15 @@ class FastCNNAutoLabeler:
                 rpn_anchor_generator=anchor_generator,
                 box_roi_pool=roi_pooler
             )
+            
         elif model_type == "mobilenet_v3":
             # 超轻量版：MobileNetV3
             model = fasterrcnn_mobilenet_v3_large_fpn(weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT)
+            in_features = model.roi_heads.box_predictor.cls_score.in_features
+            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
+            
+        elif model_type == "resnet50_fpn_v2":
+            model = fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
             in_features = model.roi_heads.box_predictor.cls_score.in_features
             model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
             
@@ -551,7 +558,7 @@ def main():
     parser = argparse.ArgumentParser(description='使用本地Faster R-CNN模型自动标注图像')
     parser.add_argument('--input_dir', required=True, help='包含未标注图像的目录')
     parser.add_argument('--model_path', required=True, help='训练好的Faster R-CNN模型路径(.pth文件)')
-    parser.add_argument('--model_type', default='resnet50_fpn', choices=['resnet50_fpn', 'resnet18_fpn', 'mobilenet_v3'], 
+    parser.add_argument('--model_type', default='resnet50_fpn', choices=['resnet50_fpn', 'resnet50_fpn_v2', 'resnet18_fpn', 'mobilenet_v3'], 
                         help='使用的骨干网络类型')
     parser.add_argument('--batch_size', type=int, default=4, help='并行处理的图像数量')
     parser.add_argument('--confidence', type=float, default=0.5, help='检测的最小置信度阈值')
