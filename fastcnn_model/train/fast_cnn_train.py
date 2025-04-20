@@ -10,6 +10,7 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from torchvision.models.resnet import resnet18, resnet34
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone, _validate_trainable_layers
@@ -26,7 +27,7 @@ from tqdm import tqdm
 datapath = "./label"
 
 # 选择模型类型
-MODEL_TYPE = "resnet50_fpn"  # 标准版: "resnet50_fpn", 轻量版: "resnet18_fpn", 超轻量版: "mobilenet_v3"
+MODEL_TYPE = "resnet50_fpn"  # 标准版: "resnet50_fpn"& "resnet50_fpn_v2", 轻量版: "resnet18_fpn", 超轻量版: "mobilenet_v3"
 
 # 四分类垃圾数据集配置
 CATEGORY_MAPPING = {
@@ -410,7 +411,10 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
         model = fasterrcnn_mobilenet_v3_large_fpn(weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT)
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
-        
+    elif model_type == "resnet50_fpn_v2":
+        model = fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
+        in_features = model.roi_heads.box_predictor.cls_score.in_features
+        model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
     else:
         raise ValueError(f"不支持的模型类型: {model_type}")
     
