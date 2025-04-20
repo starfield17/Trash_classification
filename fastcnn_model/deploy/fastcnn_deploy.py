@@ -14,6 +14,7 @@ from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection import fasterrcnn_resnet50_fpn, FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_ResNet50_FPN_V2_Weights
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from torchvision.models.resnet import resnet18, resnet34
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
@@ -34,7 +35,7 @@ CONF_THRESHOLD = 0.7
 model_path = "output/model_final.pth"  # 修改为FastCNN模型路径
 STM32_PORT = "/dev/ttyUSB0" #choose any serial you want 
 STM32_BAUD = 115200
-MODEL_TYPE = "resnet50_fpn"  # 模型类型: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3"
+MODEL_TYPE = "resnet50_fpn"  # 模型类型: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
 
 # 四分类垃圾数据集配置
 CLASS_NAMES = ["厨余垃圾", "可回收垃圾", "有害垃圾", "其他垃圾"]
@@ -587,6 +588,11 @@ class DetectionService:
             in_features = model.roi_heads.box_predictor.cls_score.in_features
             model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
             
+        elif model_type == "resnet50_fpn_v2":
+            model = fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
+            in_features = model.roi_heads.box_predictor.cls_score.in_features
+            model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
+        
         else:
             raise ValueError(f"不支持的模型类型: {model_type}")
         
