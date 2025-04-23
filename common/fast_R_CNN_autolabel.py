@@ -1,4 +1,4 @@
-# fastcnn_autolabel.py
+# fast_R_CNN_autolabel.py
 import os
 import cv2
 import json
