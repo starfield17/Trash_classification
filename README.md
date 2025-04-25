@@ -1,16 +1,25 @@
 # Trash_classification
 
-基于 YOLO 目标检测的实时垃圾分类系统。利用计算机视觉技术实现垃圾的自动识别与分类，通过串口通信实现与自动分类设备的协同工作。
+基于 YOLO/Fast R-CNN 目标检测的实时垃圾分类系统。利用计算机视觉技术实现垃圾的自动识别与分类，通过串口通信实现与自动分类设备的协同工作。
 
 ## 项目简介
 
-本项目通过YOLO系列模型实现垃圾的实时检测与分类，集成了以下核心功能：
+本项目通过 YOLO 系列模型或 Fast R-CNN 模型实现垃圾的实时检测与分类，集成了以下核心功能：
 
-- **实时检测**：采用 YOLO 目标检测算法，支持摄像头实时画面处理
+- **实时检测**：采用 YOLO 或 Fast R-CNN 目标检测算法，支持摄像头实时画面处理
 - **自动分类**：支持四大类垃圾（厨余、可回收、有害、其他）的识别
 - **串口通信**：将检测结果实时传输至 STM32 控制器，实现自动分类
 - **智能防误**：内置防重复计数和稳定性检测机制，提高分类准确性
 - **可视化调试**：可选的调试窗口，实时显示检测结果和置信度
+
+## 模型对比
+
+| 特性 | YOLO | Fast R-CNN |
+|------|------|------------|
+| 速度 | 较快 | 中等 |
+| 精度 | 较高 | 高 |
+| 资源消耗 | 较低 | 中等 |
+| 适用场景 | 普通硬件和嵌入式设备 | 具有一定算力的设备 |
 
 # 环境配置
 
@@ -57,9 +66,17 @@ pip install --upgrade pip
 - cuDNN: https://developer.nvidia.com/cudnn
 
 ### 5. 安装依赖包
+
+#### YOLO 模型依赖
 ```bash
 # 安装PyTorch & 其他依赖
 pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision ultralytics opencv-python numpy scikit-learn
+```
+
+#### Fast R-CNN 模型依赖
+```bash
+# 安装PyTorch & 其他依赖
+pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision tqdm opencv-python numpy scikit-learn concurrent-log-handler
 ```
 
 ### 6. 验证环境
@@ -69,6 +86,9 @@ python3 -c "import torch; print('GPU available:', torch.cuda.is_available())"
 
 # 验证YOLO环境
 python3 -c "from ultralytics import YOLO; YOLO('yolov8n.pt')"
+
+# 验证Fast R-CNN环境
+python3 -c "import torchvision; from torchvision.models.detection import fasterrcnn_resnet50_fpn; print('FasterRCNN available')"
 ```
 
 ## 部署环境配置
@@ -99,7 +119,10 @@ conda activate deploy_env
 ### 3. 安装依赖包
 ```bash
 # 基础依赖
-pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision ultralytics opencv-python numpy pyserial transitions
+pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision opencv-python numpy pyserial transitions
+
+# 如果使用Fast R-CNN模型
+pip install -i https://pypi.mirrors.ustc.edu.cn/simple/ torch torchvision opencv-python numpy pyserial
 ```
 
 ### 4. 配置用户权限
@@ -162,20 +185,24 @@ label/
 ```python
 category_mapping = {
     # 厨余垃圾 (0)
+    'Kitchen_waste': 0,
     'potato': 0,
     'daikon': 0,
     'carrot': 0,
     
     # 可回收垃圾 (1)
+    'Recyclable_waste': 1,
     'bottle': 1,
     'can': 1,
     
     # 有害垃圾 (2)
+    'Hazardous_waste': 2,
     'battery': 2,
     'drug': 2,
     'inner_packing': 2,
     
     # 其他垃圾 (3)
+    'Other_waste': 3,
     'tile': 3,
     'stone': 3,
     'brick': 3
@@ -184,7 +211,9 @@ category_mapping = {
 
 ## 训练配置
 
-### 基础配置
+### YOLO模型训练
+
+#### 基础配置
 ```python
 # train4class_yolovX_easydata.py
 
@@ -195,7 +224,7 @@ select_model = 'yolov12n.pt'  # 可选: yolo11s.pt, yolo11m.pt, yolo11l.pt等
 datapath = './label'  # 指向数据集目录
 ```
 
-### 高级参数调整
+#### 高级参数调整
 ```python
 train_args = {
     # 基础训练参数
@@ -223,27 +252,58 @@ train_args = {
 }
 ```
 
+### Fast R-CNN模型训练
+
+#### 基础配置
+```python
+# FAST_R_CNN_train.py
+
+# 数据路径
+datapath = "./label"  # 指向数据集目录
+
+# 选择模型类型
+MODEL_TYPE = "resnet50_fpn"  # 可选: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
+
+# 四分类垃圾数据集配置
+CLASS_NAMES = ["厨余垃圾", "可回收垃圾", "有害垃圾", "其他垃圾"]
+```
+
+#### 高级参数调整
+```python
+# 训练参数
+num_epochs = min(max(10, len(train_files) // 10), 200)  # 训练轮数根据数据集大小自动调整
+batch_size = 8  # GPU上的批次大小
+patience = 10  # 早停参数，10个epoch无改进则停止
+min_delta = 0.001  # 最小改进阈值
+
+# 优化器参数
+optimizer = torch.optim.SGD(
+    params, 
+    lr=0.005,  # 初始学习率 
+    momentum=0.9,  # 动量
+    weight_decay=0.0005  # 权重衰减
+)
+
+# 学习率调度器
+lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer,
+    mode='min',
+    factor=0.5,     # 平稳时降低一半
+    patience=3,     # 等待3个周期再降低
+    min_lr=1e-6     # 不低于这个值
+)
+```
+
 ## 训练启动
 
-1. **基础训练**:
+### YOLO模型训练
 ```bash
 python train4class_yolovX_easydata.py
 ```
 
-2. **指定配置模式训练**:
-```python
-# 在代码中修改配置模式
-config = 'focus_accuracy'  # 使用精度优先配置
-```
-
-3. **自定义参数训练**:
-```python
-# 修改train_args中的参数
-train_args.update({
-    'batch': 16,
-    'lr0': 0.001,
-    'epochs': 150
-})
+### Fast R-CNN模型训练
+```bash
+python FAST_R_CNN_train.py
 ```
 
 ## 训练过程监控
@@ -253,15 +313,11 @@ train_args.update({
 正在检查数据集完整性...
 找到 100 张图片
 找到 98 对有效的图片和标签文件
-Processing train split...
-train: 78 images
-Processing val split...
-val: 10 images
-Processing test split...
-test: 10 images
+将数据集划分为训练集、验证集和测试集...
+训练集: 78 图片, 验证集: 10 图片, 测试集: 10 图片
 ```
 
-### 训练指标
+### YOLO训练指标
 - **mAP**: 平均精度均值
 - **P**: 精确率
 - **R**: 召回率
@@ -270,11 +326,44 @@ test: 10 images
   - cls_loss: 分类损失
   - dfl_loss: 分布式焦点损失
 
+### Fast R-CNN训练指标
+- **train_loss**: 训练损失
+  - loss_classifier: 分类损失
+  - loss_box_reg: 边界框回归损失
+  - loss_objectness: 目标性损失
+  - loss_rpn_box_reg: RPN框回归损失
+- **val_loss**: 验证损失
+  - 包含同样的详细损失组成部分
+
+## Fast R-CNN模型类型选择
+
+Fast R-CNN模型支持多种不同的backbone网络:
+
+### 1. resnet50_fpn (标准版)
+- 最全面的特征提取能力
+- 适合对精度要求高的场景
+- 资源消耗较大
+
+### 2. resnet18_fpn (轻量版)
+- 精度与速度的良好平衡
+- 适合普通PC或边缘设备
+- 资源消耗适中
+
+### 3. mobilenet_v3 (超轻量版)
+- 专为移动设备和嵌入式系统优化
+- 最低的资源消耗
+- 牺牲部分精度换取速度
+
+### 4. resnet50_fpn_v2 (改进版)
+- 基于ResNet50的改进版本
+- 更强的特征提取能力
+- 需要更多的计算资源
+
 ## 常见问题处理
 
 1. **显存不足**:
    - 减小batch_size
-   - 降低imgsz
+   - 降低imgsz或选择更轻量的模型(如resnet18_fpn, mobilenet_v3)
    - 使用更小的基础模型
 
 2. **过拟合**:
@@ -284,14 +373,52 @@ test: 10 images
 
 3. **欠拟合**:
    - 增加epochs
-   - 提高lr0
-   - 增大模型容量
+   - 提高learning rate
+   - 增大模型容量或选择更强的模型(如resnet50_fpn_v2)
 
 4. **训练不稳定**:
-   - 降低lr0
+   - 降低learning rate
    - 增加warmup_epochs
    - 调整损失权重
-  # 部署指南
+
+# 部署指南
+
+## 模型部署
+
+### YOLO模型部署
+```bash
+python y12e_rebuild.py
+```
+
+### Fast R-CNN模型部署
+```bash
+python FAST_R_CNN_deploy.py
+```
+
+## 配置调整
+
+### YOLO配置
+```python
+# 全局配置变量
+DEBUG_WINDOW = True
+ENABLE_SERIAL = True
+CONF_THRESHOLD = 0.9
+model_path = "yolov12n_e300.pt"
+STM32_PORT = "/dev/ttyUSB0"
+STM32_BAUD = 115200
+```
+
+### Fast R-CNN配置
+```python
+# 全局配置变量
+DEBUG_WINDOW = True
+ENABLE_SERIAL = True
+CONF_THRESHOLD = 0.7
+model_path = "output/model_final.pth"  # 修改为FastCNN模型路径
+STM32_PORT = "/dev/ttyUSB0"
+STM32_BAUD = 115200
+MODEL_TYPE = "resnet50_fpn"  # 模型类型: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
+```
 
 ## 常见问题处理
 
@@ -316,33 +443,38 @@ CAMERA_HEIGHT = 480
 1. **无法打开串口**：
 ```bash
 # 检查设备
-ls -l /dev/ttyAMA*
+ls -l /dev/ttyAMA* /dev/ttyUSB*
 
 # 检查权限
-sudo chmod 666 /dev/ttyAMA2
+sudo chmod 666 /dev/ttyUSB0
 ```
 
 2. **通信不稳定**：
 ```python
 # 增加超时时间
-self.stm32_port = serial.Serial(
-    STM32_PORT, 
-    STM32_BAUD,
+self.port = serial.Serial(
+    self.config.stm32_port,
+    self.config.stm32_baud,
     timeout=0.2,           # 增加读取超时
     write_timeout=0.2      # 增加写入超时
 )
 ```
+
 ### 检测问题
 1. **误检率高**：
-- 提高置信度阈值
-- 增加稳定性检测时间
+- 提高置信度阈值 (CONF_THRESHOLD)
+- 增加稳定性检测时间 (min_position_change)
 - 调整摄像头角度和光照
 
 2. **漏检率高**：
 - 降低置信度阈值
 - 减少稳定性要求
 - 改善环境光照条件
-  
+
+3. **Fast R-CNN特有问题**:
+- 如果模型加载失败，检查MODEL_TYPE是否与训练时一致
+- 对于资源受限设备，尝试更换为轻量级模型 (mobilenet_v3或resnet18_fpn)
+
 # 故障排除指南
 
 ## 性能优化
@@ -358,100 +490,32 @@ torch.cuda.empty_cache()  # 清理GPU缓存
 
 ### 内存管理
 ```python
-# 使用生成器加载数据
-def load_data():
-    for item in dataset:
-        yield process_item(item)
-
-# 使用迭代器处理
-for batch in load_data():
-    model(batch)
+# 在每次主循环迭代后清理内存
+import gc
+gc.collect()
 ```
 
 ## 调试方法
 
-### 调试日志级别
-```python
-import logging
+### 调试窗口
+设置 `DEBUG_WINDOW = True` 可以启用可视化调试窗口，显示检测结果和置信度。
 
-# 设置日志级别
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+### 串口通信调试
+当 `DEBUG_WINDOW = True` 时，会打印详细的串口通信数据包信息，便于调试。
+
+### 错误捕获
+代码中集成了完整的错误捕获和状态恢复机制，确保系统在异常情况下能够自动恢复。
+
+## Fast R-CNN特有的调试技巧
+
+### 模型输出分析
+```python
+# 分析模型的第一个检测结果
+prediction = predictions[0]
+print("边界框:", prediction['boxes'].shape)
+print("分数:", prediction['scores'])
+print("标签:", prediction['labels'])
 ```
 
-### 性能分析
-```python
-import cProfile
-import pstats
-
-# 分析代码性能
-profiler = cProfile.Profile()
-profiler.enable()
-# 运行代码
-profiler.disable()
-stats = pstats.Stats(profiler).sort_stats('cumtime')
-stats.print_stats()
-```
-
-## 开发建议
-
-### 开发流程
-1. **循序渐进**
-   - 先用小数据集测试
-   - 确认流程无误后扩大规模
-   - 逐步开启高级功能
-
-2. **版本控制**
-   - 保存不同配置的模型
-   - 记录实验结果
-   - 做好参数版本管理
-
-3. **测试策略**
-   - 单元测试重要组件
-   - 集成测试关键流程
-   - 压力测试系统稳定性
-
-## 部署优化
-
-### 1. 模型优化
-```python
-# 模型量化(npu必须)
-from ultralytics.engine.exporter import Exporter
-exporter = Exporter()
-exporter.export(format='onnx')  # 导出ONNX格式
-```
-
-### 2. 推理优化
-```python
-# 批处理推理
-def batch_inference(images, batch_size=4):
-    results = []
-    for i in range(0, len(images), batch_size):
-        batch = images[i:i+batch_size]
-        results.extend(model(batch))
-    return results
-```
-
-### 3. 内存优化
-```python
-# 定期清理内存
-import gc
-
-def clean_memory():
-    gc.collect()
-    torch.cuda.empty_cache()
-```
-
-## 监控指标
-
-### 1. 系统监控
-```python
-def monitor_system():
-    import psutil
-    cpu_percent = psutil.cpu_percent()
-    mem_percent = psutil.virtual_memory().percent
-    logging.info(f"CPU: {cpu_percent}%, MEM: {mem_percent}%")
-```
-
+### 不同backbone的性能对比
+可以通过修改 `MODEL_TYPE` 参数，尝试不同的backbone网络，对比它们在特定数据集上的性能表现。
