@@ -1,5 +1,5 @@
 # Trash_classification
-
+https://github.com/starfield17/Trash_classification.git
 基于 YOLO/Fast R-CNN 目标检测的实时垃圾分类系统。利用计算机视觉技术实现垃圾的自动识别与分类，通过串口通信实现与自动分类设备的协同工作。
 
 ## 项目简介
