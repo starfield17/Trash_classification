@@ -1,6 +1,8 @@
 # Trash_classification
-##https://github.com/starfield17/Trash_classification.git
+
 基于 YOLO/Fast R-CNN 目标检测的实时垃圾分类系统。利用计算机视觉技术实现垃圾的自动识别与分类，通过串口通信实现与自动分类设备的协同工作。
+
+项目仓库: https://github.com/starfield17/Trash_classification.git
 
 ## 项目简介
 
@@ -519,3 +521,85 @@ print("标签:", prediction['labels'])
 
 ### 不同backbone的性能对比
 可以通过修改 `MODEL_TYPE` 参数，尝试不同的backbone网络，对比它们在特定数据集上的性能表现。
+
+## 开发建议
+
+### 开发流程
+1. **循序渐进**
+   - 先用小数据集测试
+   - 确认流程无误后扩大规模
+   - 逐步开启高级功能
+
+2. **版本控制**
+   - 保存不同配置的模型
+   - 记录实验结果
+   - 做好参数版本管理
+
+3. **测试策略**
+   - 单元测试重要组件
+   - 集成测试关键流程
+   - 压力测试系统稳定性
+
+## 部署优化
+
+### 1. 模型优化
+
+#### YOLO模型优化
+```python
+# 模型量化(NPU必须)
+from ultralytics.engine.exporter import Exporter
+exporter = Exporter()
+exporter.export(format='onnx')  # 导出ONNX格式
+```
+
+#### Fast R-CNN模型优化
+```python
+# 导出不同格式的模型
+save_optimized_model(model, output_dir, device, model_type)
+
+# 半精度模型
+model_fp16 = model.half()
+fp16_path = os.path.join(output_dir, "model_fp16.pth")
+torch.save(model_fp16.state_dict(), fp16_path)
+
+# ONNX模型(适用于树莓派部署)
+torch.onnx.export(
+    wrapper, 
+    dummy_input, 
+    onnx_path,
+    input_names=input_names,
+    output_names=output_names,
+    opset_version=11
+)
+```
+
+### 2. 推理优化
+```python
+# 使用预处理批处理
+# 设置非阻塞模式
+cv2.setUseOptimized(True)
+```
+
+### 3. 内存优化
+```python
+# 定期清理内存
+import gc
+
+def clean_memory():
+    gc.collect()
+    torch.cuda.empty_cache()
+```
+
+## 监控指标
+
+### 1. 系统监控
+```python
+def monitor_system():
+    import psutil
+    cpu_percent = psutil.cpu_percent()
+    mem_percent = psutil.virtual_memory().percent
+    print(f"CPU: {cpu_percent}%, MEM: {mem_percent}%")
+```
+
+### 2. 检测性能监控
+使用统计管理器 `StatisticsManager` 可以记录和分析系统的检测性能指标。
