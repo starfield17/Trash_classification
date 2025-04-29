@@ -39,11 +39,15 @@ sudo apt install -y build-essential git cmake python3-dev python3-pip wget
 
 ### 2. 安装Conda
 ```bash
-# 下载Miniconda
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh #官方源
-wget https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh #清华源
+# 下载Miniconda / Miniforge
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh #miniconda 官方源
+wget https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh #miniconda 清华源
+wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh #miniforge git源
+wget https://mirrors.tuna.tsinghua.edu.cn/github-release/conda-forge/miniforge/LatestRelease/Miniforge3-Linux-x86_64.sh #miniforge 清华源
+
 # 安装
-bash ./Miniconda3-latest-Linux-x86_64.sh
+bash ./Miniconda3-latest-Linux-x86_64.sh # miniconda
+bash ./Miniforge3-Linux-x86_64.sh # miniforge
 # 初始化
 source ~/.bashrc
 # 验证安装
