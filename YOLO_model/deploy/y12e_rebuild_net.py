@@ -25,7 +25,7 @@ model_path = "yolov12n_e300.pt"
 STM32_PORT = "/dev/ttyUSB0" #choose any serial you want 
 STM32_BAUD = 115200
 ENABLE_DEBUG_PORT = True     # Enable network debug port
-DEBUG_PORT = 1145            # Network port for debugging
+DEBUG_PORT = 8964            # Network port for debugging
 
 # ============================================================
 # Default configuration(low pri) / 默认配置参数(低优先级)
@@ -73,7 +73,7 @@ class Config:
     
     # Network debug configuration
     enable_debug_port: bool = True  # Enable network debug port
-    debug_port: int = 1145           # Port for debug commands
+    debug_port: int = 8964           # Port for debug commands
 
 # ============================================================
 # Event System / 系统事件
