@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-YOLO .pt 模型转换为 ONNX 格式的独立程序
-使用方法:
+Standalone program to convert YOLO .pt model to ONNX format
+Usage:
     python convert_to_onnx.py --model path/to/model.pt [options]
 
-示例:
+Example:
     python convert_to_onnx.py --model runs/train/weights/best.pt --imgsz 640 --half
 """
 
@@ -21,137 +21,137 @@ try:
     from tqdm import tqdm
     import onnx
 except ImportError as e:
-    print(f"错误: 缺少必要的依赖 - {e}")
-    print("请先安装依赖: pip install ultralytics tqdm onnx packaging")
+    print(f"Error: Missing required dependencies - {e}")
+    print("Please install dependencies first: pip install ultralytics tqdm onnx packaging")
     sys.exit(1)
 
 def check_dependencies():
-    """检查依赖版本是否兼容"""
+    """Check if dependency versions are compatible"""
     try:
-        # 检查ultralytics版本
+        # Check ultralytics version
         ul_version = pkg_resources.get_distribution("ultralytics").version
         min_version = "8.0.0"
         if version.parse(ul_version) < version.parse(min_version):
-            print(f"警告: 当前 ultralytics 版本 ({ul_version}) 较旧，建议升级到 {min_version} 或更高")
-            print("您可以运行: pip install -U ultralytics\n")
+            print(f"Warning: Current ultralytics version ({ul_version}) is older, recommended to upgrade to {min_version} or higher")
+            print("You can run: pip install -U ultralytics\n")
         else:
-            print(f"✓ ultralytics 版本 {ul_version} 兼容")
+            print(f"✓ ultralytics version {ul_version} is compatible")
             
-        # 检查 onnx 版本
+        # Check onnx version
         onnx_version = pkg_resources.get_distribution("onnx").version
         min_onnx_version = "1.12.0"
         if version.parse(onnx_version) < version.parse(min_onnx_version):
-            print(f"警告: 当前 onnx 版本 ({onnx_version}) 较旧，建议升级到 {min_onnx_version} 或更高")
-            print("您可以运行: pip install -U onnx\n")
+            print(f"Warning: Current onnx version ({onnx_version}) is older, recommended to upgrade to {min_onnx_version} or higher")
+            print("You can run: pip install -U onnx\n")
         else:
-            print(f"✓ onnx 版本 {onnx_version} 兼容")
+            print(f"✓ onnx version {onnx_version} is compatible")
             
-        # 返回版本信息用于后续可能的兼容性处理
+        # Return version info for potential compatibility handling
         return ul_version, onnx_version
     except Exception as e:
-        print(f"版本检查出错: {e}")
+        print(f"Version check error: {e}")
         return None, None
 
 def print_welcome():
-    """打印欢迎信息和使用说明"""
+    """Print welcome message and usage instructions"""
     welcome_msg = """
 ╔════════════════════════════════════════════════╗
-║        YOLO PT to ONNX 模型转换工具            ║
+║        YOLO PT to ONNX Model Converter         ║
 ╚════════════════════════════════════════════════╝
 
-这个工具可以帮助你将YOLO的PT模型转换为ONNX格式。
+This tool helps you convert YOLO PT models to ONNX format.
 
-基本用法:
-  python convert_to_onnx.py --model 你的模型路径.pt
+Basic usage:
+  python convert_to_onnx.py --model your_model_path.pt
 
-常用示例:
-1. 基本转换（使用默认参数）:
+Common examples:
+1. Basic conversion (with default parameters):
    python convert_to_onnx.py --model ./best.pt
 
-2. 指定图像尺寸和启用FP16:
+2. Specify image size and enable FP16:
    python convert_to_onnx.py --model best.pt --imgsz 832 --half
 
-3. 指定设备:
-   python convert_to_onnx.py --model best.pt --device cpu     # 使用CPU
-   python convert_to_onnx.py --model best.pt --device 0       # 使用第一张GPU
+3. Specify device:
+   python convert_to_onnx.py --model best.pt --device cpu     # Use CPU
+   python convert_to_onnx.py --model best.pt --device 0       # Use first GPU
 
-4. 完整参数示例:
+4. Full parameter example:
    python convert_to_onnx.py --model best.pt --imgsz 640 --half --batch-size 4 --opset 11 --device 0
 
-可用参数说明:
-  --model      : [必需] 输入的PT模型文件路径
+Available parameters:
+  --model      : [Required] Path to input PT model file
 
-  --imgsz      : [可选] 图像输入尺寸，默认640
-                影响：
-                - 较大的尺寸（如832、1024）可以提高检测精度，特别是对小目标
-                - 较小的尺寸（如416、512）可以提高推理速度
-                - 过大尺寸会显著增加内存占用和推理时间
-                推荐值：416/512/640/832/1024，必须是32的倍数
+  --imgsz      : [Optional] Input image size, default 640
+                Effects:
+                - Larger sizes (e.g., 832, 1024) improve detection accuracy, especially for small objects
+                - Smaller sizes (e.g., 416, 512) improve inference speed
+                - Very large sizes significantly increase memory usage and inference time
+                Recommended values: 416/512/640/832/1024, must be multiples of 32
 
-  --half       : [可选] 启用FP16半精度导出，默认关闭
-                影响：
-                - 启用后模型大小减少约50%
-                - 推理速度提升30-50%
-                - 精度略有下降（通常可以接受）
-                - 需要硬件支持FP16
+  --half       : [Optional] Enable FP16 half-precision export, default off
+                Effects:
+                - Reduces model size by ~50%
+                - Improves inference speed by 30-50%
+                - Slightly reduces accuracy (usually acceptable)
+                - Requires hardware FP16 support
 
-  --batch-size : [可选] 批处理大小，默认1
-                影响：
-                - 较大的批次可以提高GPU利用率
-                - 会增加内存占用
-                - 如果使用--dynamic，此值为最大批次大小
-                推荐值：1-32之间，根据显存大小调整
+  --batch-size : [Optional] Batch size, default 1
+                Effects:
+                - Larger batches improve GPU utilization
+                - Increases memory usage
+                - If using --dynamic, this is the maximum batch size
+                Recommended values: 1-32, adjust based on GPU memory
 
-  --opset      : [可选] ONNX操作集版本，默认12
-                影响：
-                - 较高版本支持更多新特性
-                - 较低版本兼容性更好
-                - 影响模型可部署的推理引擎版本
-                推荐值：11-13
+  --opset      : [Optional] ONNX opset version, default 12
+                Effects:
+                - Higher versions support more features
+                - Lower versions have better compatibility
+                - Affects which inference engine versions can deploy the model
+                Recommended values: 11-13
 
-  --no-simplify: [可选] 禁用ONNX模型简化，默认启用简化
-                影响：
-                - 禁用后可能保留一些原始结构
-                - 通常情况下建议保持简化
+  --no-simplify: [Optional] Disable ONNX model simplification, simplified by default
+                Effects:
+                - Disabling may preserve some original structures
+                - Generally recommended to keep simplification enabled
 
-  --no-dynamic : [可选] 禁用动态批处理大小，默认启用动态
-                影响：
-                - 禁用后批处理大小将固定为--batch-size值
-                - 适用于批处理大小固定的部署环境
+  --no-dynamic : [Optional] Disable dynamic batch size, dynamic enabled by default
+                Effects:
+                - Disabling fixes batch size to --batch-size value
+                - Suitable for deployment environments with fixed batch sizes
 
-  --device     : [可选] 指定转换使用的设备，默认自动选择
-                例如：--device cpu    # 使用CPU
-                      --device 0      # 使用第一张GPU
-                      --device 0,1    # 使用多张GPU
+  --device     : [Optional] Specify device for conversion, auto-select by default
+                Examples: --device cpu    # Use CPU
+                         --device 0      # Use first GPU
+                         --device 0,1    # Use multiple GPUs
 
-  --validate   : [可选] 转换完成后验证ONNX模型格式
+  --validate   : [Optional] Validate ONNX model format after conversion
 
-性能优化建议:
-1. 高精度场景:
+Performance optimization suggestions:
+1. High accuracy scenario:
    --imgsz 832 --batch-size 1 --no-half --no-dynamic
 
-2. 快速推理场景:
+2. Fast inference scenario:
    --imgsz 416 --batch-size 4 --half --device 0
 
-3. 平衡配置:
+3. Balanced configuration:
    --imgsz 640 --batch-size 1 --half --dynamic
 """
     print(welcome_msg)
 
 def print_settings(args):
-    """打印当前设置的参数信息"""
+    """Print current parameter settings"""
     settings_msg = """
-当前转换设置:
+Current conversion settings:
 ╔════════════════════════════════════════════════╗
-║ 输入模型: {:<37} ║
-║ 图像尺寸: {:<37} ║
-║ 精度模式: {:<37} ║
-║ 批处理数: {:<37} ║
-║ ONNX版本: {:<37} ║
-║ 模型简化: {:<37} ║
-║ 动态批次: {:<37} ║
-║ 使用设备: {:<37} ║
-║ 验证模型: {:<37} ║
+║ Input model: {:<37} ║
+║ Image size: {:<37} ║
+║ Precision: {:<37} ║
+║ Batch size: {:<37} ║
+║ ONNX version: {:<37} ║
+║ Simplify model: {:<37} ║
+║ Dynamic batch: {:<37} ║
+║ Device: {:<37} ║
+║ Validate model: {:<37} ║
 ╚════════════════════════════════════════════════╝
 """.format(
     os.path.basename(args.model),
@@ -159,21 +159,21 @@ def print_settings(args):
     "FP16" if args.half else "FP32",
     args.batch_size,
     f"OPSET {args.opset}",
-    "是" if args.simplify else "否",
-    "是" if args.dynamic else "否",
-    args.device if args.device else "自动选择",
-    "是" if args.validate else "否"
+    "Yes" if args.simplify else "No",
+    "Yes" if args.dynamic else "No",
+    args.device if args.device else "Auto-select",
+    "Yes" if args.validate else "No"
 )
     print(settings_msg)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Convert YOLO .pt model to ONNX format')
     
-    # 必需参数
+    # Required parameters
     parser.add_argument('--model', type=str, required=True,
                       help='Path to the .pt model file')
     
-    # 可选参数                  
+    # Optional parameters                  
     parser.add_argument('--imgsz', type=int, default=640,
                       help='Image size (default: 640)')
     parser.add_argument('--half', action='store_true',
@@ -193,7 +193,7 @@ def parse_args():
     
     args = parser.parse_args()
     
-    # 设置 simplify 和 dynamic 的值（反转 no-* 参数）
+    # Set simplify and dynamic values (invert no-* parameters)
     args.simplify = not args.no_simplify
     args.dynamic = not args.no_dynamic
     
@@ -201,26 +201,26 @@ def parse_args():
 
 def find_onnx_model(model_path):
     """
-    查找可能生成的ONNX模型文件，但不抛出错误
+    Find potentially generated ONNX model file without raising errors
     
     Args:
-        model_path: 原始PT模型路径
+        model_path: Original PT model path
         
     Returns:
-        str: ONNX模型路径，如果找不到则返回None
+        str: ONNX model path if found, otherwise None
     """
-    # 常见的导出位置
+    # Common export locations
     model_dir = os.path.dirname(os.path.abspath(model_path))
     model_name = os.path.splitext(os.path.basename(model_path))[0]
     
-    # 可能的文件路径
+    # Possible file paths
     possible_paths = [
-        os.path.join(model_dir, f"{model_name}.onnx"),  # 同目录同名
-        os.path.join(model_dir, "yolov8_onnx", f"{model_name}.onnx"),  # ultralytics默认位置
-        os.path.join(os.getcwd(), f"{model_name}.onnx"),  # 当前工作目录
+        os.path.join(model_dir, f"{model_name}.onnx"),  # Same directory, same name
+        os.path.join(model_dir, "yolov8_onnx", f"{model_name}.onnx"),  # ultralytics default location
+        os.path.join(os.getcwd(), f"{model_name}.onnx"),  # Current working directory
     ]
     
-    # 查找文件
+    # Find file
     for path in possible_paths:
         if os.path.exists(path):
             return path
@@ -229,87 +229,87 @@ def find_onnx_model(model_path):
 
 def validate_onnx_model(model_path):
     """
-    验证ONNX模型格式是否正确
+    Validate ONNX model format
     
     Args:
-        model_path: ONNX模型路径
+        model_path: ONNX model path
         
     Returns:
-        bool: 验证是否通过
+        bool: Whether validation passed
     """
     try:
-        print(f"\n正在验证ONNX模型: {model_path}")
-        # 加载并检查模型
+        print(f"\nValidating ONNX model: {model_path}")
+        # Load and check model
         onnx_model = onnx.load(model_path)
         onnx.checker.check_model(onnx_model)
         
-        # 获取输入输出信息
+        # Get input/output info
         inputs = [input.name for input in onnx_model.graph.input]
         outputs = [output.name for output in onnx_model.graph.output]
         
-        # 获取模型大小
+        # Get model size
         model_size = os.path.getsize(model_path) / (1024 * 1024)  # MB
         
-        print(f"✓ 模型验证通过！")
-        print(f"- 模型大小: {model_size:.2f} MB")
-        print(f"- 输入节点: {', '.join(inputs)}")
-        print(f"- 输出节点: {', '.join(outputs)}")
-        print(f"- 操作节点数: {len(onnx_model.graph.node)}")
+        print(f"✓ Model validation passed!")
+        print(f"- Model size: {model_size:.2f} MB")
+        print(f"- Input nodes: {', '.join(inputs)}")
+        print(f"- Output nodes: {', '.join(outputs)}")
+        print(f"- Operation nodes: {len(onnx_model.graph.node)}")
         
         return True
     except Exception as e:
-        print(f"\n✗ 模型验证失败: {str(e)}")
+        print(f"\n✗ Model validation failed: {str(e)}")
         return False
 
 def convert_to_onnx(args):
     """
-    将YOLO的.pt模型转换为ONNX格式
+    Convert YOLO .pt model to ONNX format
     
     Args:
-        args: 命令行参数
+        args: Command line arguments
         
     Returns:
-        bool: 转换是否成功
+        bool: Whether conversion succeeded
     """
     try:
-        # 检查输入模型文件是否存在
+        # Check if input model file exists
         if not os.path.exists(args.model):
-            print(f"错误: 未找到模型文件 {args.model}")
+            print(f"Error: Model file not found {args.model}")
             return False
         
-        # 打印当前设置
+        # Print current settings
         print_settings(args)
         
-        # 加载模型
-        print("\n[1/3] 正在加载模型...")
+        # Load model
+        print("\n[1/3] Loading model...")
         start_time = time.time()
         try:
             model = YOLO(args.model)
         except Exception as e:
-            print(f"加载模型失败，请确保模型格式正确: {e}")
+            print(f"Failed to load model, please ensure correct model format: {e}")
             return False
         
         load_time = time.time() - start_time
-        print(f"模型加载完成，耗时: {load_time:.2f} 秒")
+        print(f"Model loaded, time taken: {load_time:.2f} seconds")
         
-        # 显示模型基本信息
+        # Show basic model info
         try:
-            model_info = f"模型类型: {model.type}"
-            print(f"模型信息: {model_info}")
+            model_info = f"Model type: {model.type}"
+            print(f"Model info: {model_info}")
         except:
-            print("无法获取模型详细信息")
+            print("Unable to get detailed model info")
         
-        # 导出为ONNX
-        print("[2/3] 正在转换为ONNX格式...")
+        # Export to ONNX
+        print("[2/3] Converting to ONNX format...")
         export_start = time.time()
         
         try:
-            # 使用进度条提示转换进度
-            with tqdm(total=100, desc="转换进度", bar_format='{l_bar}{bar:30}{r_bar}') as pbar:
-                # 初始进度
-                pbar.update(10)  # 初始准备阶段
+            # Use progress bar to show conversion progress
+            with tqdm(total=100, desc="Conversion progress", bar_format='{l_bar}{bar:30}{r_bar}') as pbar:
+                # Initial progress
+                pbar.update(10)  # Initial preparation
                 
-                # 构建为命令行兼容格式的参数
+                # Build command-line compatible arguments
                 export_args = {
                     "format": "onnx",
                     "imgsz": args.imgsz,
@@ -320,52 +320,52 @@ def convert_to_onnx(args):
                     "dynamic": args.dynamic
                 }
                 
-                # 只有当设备参数不为空时才添加
+                # Only add device if specified
                 if args.device:
                     export_args["device"] = args.device
                     
-                # 直接调用export方法
+                # Directly call export method
                 success = model.export(**export_args)
                 
-                # 更新进度条
-                pbar.update(90)  # 转换完成
+                # Update progress bar
+                pbar.update(90)  # Conversion complete
         except Exception as e:
-            print(f"转换过程中出错: {e}")
+            print(f"Error during conversion: {e}")
             return False
         
         export_time = time.time() - export_start
         
-        # 尝试找到生成的ONNX文件
+        # Try to find generated ONNX file
         onnx_path = find_onnx_model(args.model)
         
         if success:
-            print(f"[3/3] 转换完成！耗时: {export_time:.2f} 秒")
+            print(f"[3/3] Conversion complete! Time taken: {export_time:.2f} seconds")
             
             if onnx_path:
-                print(f"\n✓ ONNX模型已生成: {onnx_path}")
+                print(f"\n✓ ONNX model generated: {onnx_path}")
                 
-                # 验证模型格式
+                # Validate model format
                 if args.validate:
                     validate_onnx_model(onnx_path)
                 
-                # 打印模型信息
-                print(f"\n最终模型信息:")
-                print(f"├── 转换耗时: {export_time:.2f} 秒")
-                print(f"├── 模型大小: {os.path.getsize(onnx_path) / (1024 * 1024):.2f} MB")
-                print(f"├── 输入尺寸: {args.imgsz}x{args.imgsz}")
-                print(f"├── 批处理大小: {'动态' if args.dynamic else args.batch_size}")
-                print(f"├── 精度: {'FP16' if args.half else 'FP32'}")
-                print(f"├── ONNX操作集版本: {args.opset}")
-                print(f"└── 模型简化: {'是' if args.simplify else '否'}")
+                # Print model info
+                print(f"\nFinal model info:")
+                print(f"├── Conversion time: {export_time:.2f} seconds")
+                print(f"├── Model size: {os.path.getsize(onnx_path) / (1024 * 1024):.2f} MB")
+                print(f"├── Input size: {args.imgsz}x{args.imgsz}")
+                print(f"├── Batch size: {'Dynamic' if args.dynamic else args.batch_size}")
+                print(f"├── Precision: {'FP16' if args.half else 'FP32'}")
+                print(f"├── ONNX opset version: {args.opset}")
+                print(f"└── Model simplified: {'Yes' if args.simplify else 'No'}")
                 
                 if args.half:
-                    print("\n提示: 您已使用FP16导出模型，请确保您的硬件支持FP16推理")
+                    print("\nNote: You exported with FP16, please ensure your hardware supports FP16 inference")
                     
                 if args.dynamic:
-                    print("提示: 您已使用动态批处理大小，部署时可根据需要调整批处理大小")
+                    print("Note: You enabled dynamic batch size, can adjust batch size during deployment as needed")
             else:
-                print("\n✓ 转换过程似乎成功，但无法确定ONNX文件的位置")
-                print("请在以下位置查找生成的文件:")
+                print("\n✓ Conversion appears successful but couldn't determine ONNX file location")
+                print("Please check for generated file at:")
                 model_dir = os.path.dirname(os.path.abspath(args.model))
                 model_name = os.path.splitext(os.path.basename(args.model))[0]
                 print(f"1. {os.path.join(model_dir, f'{model_name}.onnx')}")
@@ -373,32 +373,32 @@ def convert_to_onnx(args):
             
             return True
         else:
-            print("\n✗ 转换失败")
+            print("\n✗ Conversion failed")
             return False
             
     except Exception as e:
-        print(f"\n✗ 转换过程中出错: {str(e)}")
+        print(f"\n✗ Error during conversion: {str(e)}")
         return False
 
 def main():
-    # 打印欢迎信息
+    # Print welcome message
     print_welcome()
     
-    # 检查依赖版本
+    # Check dependency versions
     ul_version, onnx_version = check_dependencies()
     
-    # 解析命令行参数
+    # Parse command line arguments
     args = parse_args()
     
-    # 执行转换
+    # Perform conversion
     result = convert_to_onnx(args)
     
-    # 显示最终状态
+    # Show final status
     if result:
-        print("\n转换过程成功完成!")
+        print("\nConversion completed successfully!")
         sys.exit(0)
     else:
-        print("\n转换过程失败。请检查错误信息并重试。")
+        print("\nConversion failed. Please check error messages and try again.")
         sys.exit(1)
 
 if __name__ == "__main__":
