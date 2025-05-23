@@ -1,34 +1,34 @@
 #!/bin/bash
 
-# 颜色定义
+# Color definitions
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 BLUE='\033[0;34m'
 
-# 检查是否以root权限运行
+# Check if running with root privileges
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        echo -e "${RED}请以root权限运行此脚本${NC}"
-        echo "使用: sudo $0"
+        echo -e "${RED}Please run this script as root${NC}"
+        echo "Usage: sudo $0"
         exit 1
     fi
 }
 
-# 扫描并显示当前可用的串口
+# Scan and display available serial ports
 scan_uart() {
-    echo -e "${BLUE}=== 当前系统中的串口设备 ===${NC}"
-    echo -e "${YELLOW}物理串口:${NC}"
+    echo -e "${BLUE}=== Current serial ports in the system ===${NC}"
+    echo -e "${YELLOW}Physical serial ports:${NC}"
     ls /dev/ttyAMA* /dev/ttyS* 2>/dev/null | while read port; do
         if [ -e "$port" ]; then
             echo -e "${GREEN}$port${NC}"
-            # 尝试获取串口的当前配置
+            # Try to get current port configuration
             stty -F $port -a 2>/dev/null | grep speed
         fi
     done
 
-    echo -e "\n${YELLOW}USB串口设备:${NC}"
+    echo -e "\n${YELLOW}USB serial devices:${NC}"
     ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | while read port; do
         if [ -e "$port" ]; then
             echo -e "${GREEN}$port${NC}"
@@ -37,39 +37,39 @@ scan_uart() {
     done
 }
 
-# 显示GPIO引脚状态
+# Display GPIO pin status
 show_gpio_status() {
-    echo -e "\n${BLUE}=== GPIO引脚状态 ===${NC}"
+    echo -e "\n${BLUE}=== GPIO Pin Status ===${NC}"
     if command -v raspi-gpio >/dev/null; then
         raspi-gpio get | grep -E "GPIO|UART"
     else
-        echo -e "${YELLOW}提示: 安装raspi-gpio可以查看更详细的GPIO状态${NC}"
+        echo -e "${YELLOW}Note: Install raspi-gpio for more detailed GPIO status${NC}"
         echo "sudo apt-get install raspi-gpio"
     fi
 }
 
-# 显示当前UART配置
+# Display current UART configuration
 show_uart_config() {
-    echo -e "\n${BLUE}=== 当前UART配置 ===${NC}"
+    echo -e "\n${BLUE}=== Current UART Configuration ===${NC}"
     if [ -f /boot/config.txt ]; then
-        echo -e "${YELLOW}从/boot/config.txt中检测到的UART配置:${NC}"
-        grep -i "uart" /boot/config.txt || echo "未找到UART相关配置"
-        echo -e "\n${YELLOW}可用的UART设备树覆盖:${NC}"
+        echo -e "${YELLOW}UART configuration detected in /boot/config.txt:${NC}"
+        grep -i "uart" /boot/config.txt || echo "No UART-related configuration found"
+        echo -e "\n${YELLOW}Available UART device tree overlays:${NC}"
         dtoverlay -h uart1
         dtoverlay -h uart2
     else
-        echo -e "${RED}无法访问/boot/config.txt${NC}"
+        echo -e "${RED}Cannot access /boot/config.txt${NC}"
     fi
 }
 
-# 配置新的UART
+# Configure new UART
 configure_new_uart() {
-    echo -e "\n${BLUE}=== 配置新的UART ===${NC}"
-    echo -e "选择要配置的UART:"
+    echo -e "\n${BLUE}=== Configure New UART ===${NC}"
+    echo -e "Select UART to configure:"
     echo "1) UART1"
     echo "2) UART2"
-    echo "3) 退出"
-    read -p "请选择 (1-3): " choice
+    echo "3) Exit"
+    read -p "Enter choice (1-3): " choice
 
     case $choice in
         1)
@@ -79,57 +79,57 @@ configure_new_uart() {
             configure_uart2
             ;;
         3)
-            echo "退出配置"
+            echo "Exiting configuration"
             ;;
         *)
-            echo -e "${RED}无效的选择${NC}"
+            echo -e "${RED}Invalid choice${NC}"
             ;;
     esac
 }
 
-# 配置UART1
+# Configure UART1
 configure_uart1() {
-    echo -e "\n${YELLOW}配置UART1${NC}"
-    echo "可用的TX引脚: 14, 32, 40"
-    echo "可用的RX引脚: 15, 33, 41"
+    echo -e "\n${YELLOW}Configuring UART1${NC}"
+    echo "Available TX pins: 14, 32, 40"
+    echo "Available RX pins: 15, 33, 41"
     
-    read -p "输入TX引脚号 (默认14): " tx_pin
-    read -p "输入RX引脚号 (默认15): " rx_pin
+    read -p "Enter TX pin number (default 14): " tx_pin
+    read -p "Enter RX pin number (default 15): " rx_pin
     
     tx_pin=${tx_pin:-14}
     rx_pin=${rx_pin:-15}
     
-    # 验证输入的引脚是否有效
+    # Validate pin numbers
     if [[ ! "$tx_pin" =~ ^(14|32|40)$ ]] || [[ ! "$rx_pin" =~ ^(15|33|41)$ ]]; then
-        echo -e "${RED}错误: 无效的引脚配置${NC}"
+        echo -e "${RED}Error: Invalid pin configuration${NC}"
         return 1
     fi
     
-    # 备份配置文件
+    # Backup config file
     cp /boot/config.txt /boot/config.txt.backup
     
-    # 添加或更新UART1配置
+    # Add or update UART1 configuration
     if grep -q "dtoverlay=uart1" /boot/config.txt; then
-        # 更新现有配置
+        # Update existing configuration
         sed -i "/dtoverlay=uart1/c\dtoverlay=uart1,txd1_pin=$tx_pin,rxd1_pin=$rx_pin" /boot/config.txt
     else
-        # 添加新配置
+        # Add new configuration
         echo "dtoverlay=uart1,txd1_pin=$tx_pin,rxd1_pin=$rx_pin" >> /boot/config.txt
     fi
     
-    echo -e "${GREEN}UART1配置已更新。需要重启才能生效。${NC}"
-    echo "配置备份已保存到 /boot/config.txt.backup"
+    echo -e "${GREEN}UART1 configuration updated. Reboot required for changes to take effect.${NC}"
+    echo "Configuration backup saved to /boot/config.txt.backup"
 }
 
-# 配置UART2
+# Configure UART2
 configure_uart2() {
-    echo -e "\n${YELLOW}配置UART2${NC}"
-    read -p "是否启用CTS/RTS? (y/n): " enable_ctsrts
+    echo -e "\n${YELLOW}Configuring UART2${NC}"
+    read -p "Enable CTS/RTS? (y/n): " enable_ctsrts
     
-    # 备份配置文件
+    # Backup config file
     cp /boot/config.txt /boot/config.txt.backup
     
-    # 添加或更新UART2配置
+    # Add or update UART2 configuration
     if [ "$enable_ctsrts" = "y" ]; then
         if grep -q "dtoverlay=uart2" /boot/config.txt; then
             sed -i "/dtoverlay=uart2/c\dtoverlay=uart2,ctsrts" /boot/config.txt
@@ -144,21 +144,21 @@ configure_uart2() {
         fi
     fi
     
-    echo -e "${GREEN}UART2配置已更新。需要重启才能生效。${NC}"
-    echo "配置备份已保存到 /boot/config.txt.backup"
+    echo -e "${GREEN}UART2 configuration updated. Reboot required for changes to take effect.${NC}"
+    echo "Configuration backup saved to /boot/config.txt.backup"
 }
 
-# 主菜单
+# Main menu
 main_menu() {
     while true; do
-        echo -e "\n${BLUE}=== 树莓派串口管理工具 ===${NC}"
-        echo "1) 扫描当前串口设备"
-        echo "2) 显示GPIO状态"
-        echo "3) 显示UART配置"
-        echo "4) 配置新的UART"
-        echo "5) 退出"
+        echo -e "\n${BLUE}=== Raspberry Pi UART Management Tool ===${NC}"
+        echo "1) Scan current serial ports"
+        echo "2) Show GPIO status"
+        echo "3) Show UART configuration"
+        echo "4) Configure new UART"
+        echo "5) Exit"
         
-        read -p "请选择操作 (1-5): " option
+        read -p "Select operation (1-5): " option
         
         case $option in
             1)
@@ -174,16 +174,16 @@ main_menu() {
                 configure_new_uart
                 ;;
             5)
-                echo -e "${GREEN}谢谢使用！${NC}"
+                echo -e "${GREEN}Thank you for using this tool!${NC}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}无效的选项，请重试${NC}"
+                echo -e "${RED}Invalid option, please try again${NC}"
                 ;;
         esac
     done
 }
 
-# 脚本入口
+# Script entry point
 check_root
 main_menu
