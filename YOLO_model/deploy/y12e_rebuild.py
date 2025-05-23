@@ -9,23 +9,23 @@ import os
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional
-#Third party function and class 
+# Third party function and class 
 from toolbox import get_script_directory, setup_gpu, find_camera, crop_frame
 from toolbox import WasteClassifier
 
 # ============================================================
-# Global config Variables(high pri) / 全局配置变量(高优先级)
+# Global config Variables (high priority)
 # ============================================================
 # Default configuration values
 DEBUG_WINDOW = True
 ENABLE_SERIAL = True
 CONF_THRESHOLD = 0.9
 model_path = "yolov12n_e300.pt"
-STM32_PORT = "/dev/ttyUSB0" #choose any serial you want 
+STM32_PORT = "/dev/ttyUSB0" # choose any serial you want 
 STM32_BAUD = 115200
 
 # ============================================================
-# Default configuration(low pri) / 默认配置参数(低优先级)
+# Default configuration (low priority)
 # ============================================================
 
 @dataclass
@@ -42,7 +42,7 @@ class Config:
     model_path: str = "yolov12n_e300.pt"
     
     # Serial configuration
-    #   (raspberrypi)：
+    #   (raspberrypi):
     # name     | TX     | RX
     # ttyS0    | GPIO14 | GPIO15
     # ttyAMA2  | GPIO0  | GPIO1
@@ -56,8 +56,8 @@ class Config:
     # Camera configuration
     camera_width: int = 1280
     camera_height: int = 720
-    #Can be enable option
-    crop_points: bool = False #List[Tuple[int, int]] = field(default_factory=lambda: [(465, 0), (1146, 720)])
+    # Can be enable option
+    crop_points: bool = False # List[Tuple[int, int]] = field(default_factory=lambda: [(465, 0), (1146, 720)])
     
     # Serial protocol configuration
     serial_header1: int = 0x2C
@@ -69,56 +69,56 @@ class Config:
     send_interval: float = 0.0  # No delay between sending detections
 
 # ============================================================
-# Event System / 系统事件
+# Event System
 # ============================================================
 
 class DetectionState(Enum):
     """
-    检测系统的状态枚举
-    IDLE: 空闲状态，等待新的帧输入
-    DETECTING: 正在进行目标检测
-    PROCESSING: 正在处理检测结果
-    SENDING: 正在发送检测数据到下游设备
-    ERROR: 系统出错状态
+    Enumeration of detection system states
+    IDLE: Idle state, waiting for new frame input
+    DETECTING: Performing object detection
+    PROCESSING: Processing detection results
+    SENDING: Sending detection data to downstream device
+    ERROR: System error state
     """
-    IDLE = auto()        # 空闲状态，等待新的帧
-    DETECTING = auto()   # 正在进行对象检测
-    PROCESSING = auto()  # 正在处理检测结果
-    SENDING = auto()     # 正在发送检测数据
-    ERROR = auto()       # 错误状态
+    IDLE = auto()        # Idle state, waiting for new frame
+    DETECTING = auto()   # Performing object detection
+    PROCESSING = auto()  # Processing detection results
+    SENDING = auto()     # Sending detection data
+    ERROR = auto()       # Error state
 
 class DetectionEvent(Enum):
     """
-    触发状态转换的事件枚举
-    FRAME_RECEIVED: 接收到新的视频帧
-    DETECTION_COMPLETED: 完成目标检测
-    SEND_DETECTION: 发送检测结果
-    DETECTION_SENT: 检测结果已发送
-    ERROR_OCCURRED: 发生错误
-    RESET: 重置系统
+    Enumeration of events triggering state transitions
+    FRAME_RECEIVED: New video frame received
+    DETECTION_COMPLETED: Object detection completed
+    SEND_DETECTION: Send detection results
+    DETECTION_SENT: Detection results sent
+    ERROR_OCCURRED: An error occurred
+    RESET: Reset the system
     """
-    FRAME_RECEIVED = auto()     # 收到新的视频帧
-    DETECTION_COMPLETED = auto() # 完成了目标检测
-    SEND_DETECTION = auto()     # 发送检测结果的事件
-    DETECTION_SENT = auto()     # 检测结果已发送
-    ERROR_OCCURRED = auto()     # 发生错误
-    RESET = auto()              # 重置系统
+    FRAME_RECEIVED = auto()     # New video frame received
+    DETECTION_COMPLETED = auto() # Object detection completed
+    SEND_DETECTION = auto()     # Send detection results event
+    DETECTION_SENT = auto()     # Detection results sent
+    ERROR_OCCURRED = auto()     # An error occurred
+    RESET = auto()              # Reset the system
 
 class EventBus:
     """
-    事件总线类：实现了发布-订阅模式，用于系统各组件间的解耦通信
-    - 允许不同组件订阅特定类型的事件
-    - 当事件发生时，通知所有订阅了该事件的组件
+    Event bus class: Implements the publish-subscribe pattern for decoupled communication between system components
+    - Allows components to subscribe to specific event types
+    - Notifies all subscribers when an event occurs
     """
     def __init__(self):
-        # 存储事件类型到订阅者回调函数的映射
+        # Stores mapping of event types to subscriber callback functions
         self.subscribers = {}
         
     def subscribe(self, event_type, callback):
         """
-        订阅特定类型的事件
-        @param event_type: 事件类型，通常是DetectionEvent枚举值
-        @param callback: 当事件发生时要调用的回调函数
+        Subscribe to a specific event type
+        @param event_type: Event type, typically a DetectionEvent enum value
+        @param callback: Callback function to be called when the event occurs
         """
         if event_type not in self.subscribers:
             self.subscribers[event_type] = []
@@ -126,73 +126,73 @@ class EventBus:
         
     def publish(self, event_type, *args, **kwargs):
         """
-        发布事件到所有订阅者
-        @param event_type: 要发布的事件类型
-        @param args, kwargs: 传递给订阅者回调函数的参数
+        Publish an event to all subscribers
+        @param event_type: The type of event to publish
+        @param args, kwargs: Parameters to pass to subscriber callback functions
         """
         if event_type in self.subscribers:
-            # 调用所有订阅了该事件的回调函数
+            # Call all callback functions subscribed to this event
             for callback in self.subscribers[event_type]:
                 callback(*args, **kwargs)
 
 
 # ============================================================
-# State Machine / 状态机
+# State Machine
 # ============================================================
 
 class StateMachine:
     """
-    通用状态机实现
-    - 管理系统的状态转换
-    - 事件触发状态转换
-    - 状态转换时执行回调函数
+    Generic state machine implementation
+    - Manages state transitions
+    - Events trigger state transitions
+    - Executes callback functions during state transitions
     """
     
     def __init__(self, initial_state):
         """
-        初始化状态机
-        @param initial_state: 初始状态，通常是DetectionState枚举值
+        Initialize the state machine
+        @param initial_state: Initial state, typically a DetectionState enum value
         """
-        self.state = initial_state           # 当前状态
-        self.transitions = {}                # 存储状态转换规则
-        self.callbacks = {}                  # 存储转换时的回调函数
+        self.state = initial_state           # Current state
+        self.transitions = {}                # Stores state transition rules
+        self.callbacks = {}                  # Stores callbacks for transitions
         
     def add_transition(self, from_state, event, to_state, callback=None):
         """
-        添加状态转换规则
-        @param from_state: 起始状态
-        @param event: 触发转换的事件
-        @param to_state: 目标状态
-        @param callback: 可选的回调函数，在状态转换时执行
+        Add a state transition rule
+        @param from_state: Starting state
+        @param event: Event triggering the transition
+        @param to_state: Target state
+        @param callback: Optional callback function to execute during transition
         """
-        # 如果起始状态不在转换表中，添加它
+        # If starting state is not in transitions, add it
         if from_state not in self.transitions:
             self.transitions[from_state] = {}
-        # 设置从起始状态经过事件到目标状态的转换规则
+        # Set transition rule from starting state via event to target state
         self.transitions[from_state][event] = to_state
         
-        # 如果提供了回调函数，存储它
+        # If a callback is provided, store it
         if callback:
-            # 为特定的(状态,事件)对存储回调函数
+            # Store callback function for specific (state, event) pair
             if (from_state, event) not in self.callbacks:
                 self.callbacks[(from_state, event)] = []
             self.callbacks[(from_state, event)].append(callback)
     
     def trigger(self, event, *args, **kwargs):
         """
-        触发事件，尝试执行状态转换
-        @param event: 要触发的事件
-        @param args, kwargs: 传递给回调函数的参数
-        @return: 如果状态转换成功返回True，否则返回False
+        Trigger an event to attempt a state transition
+        @param event: Event to trigger
+        @param args, kwargs: Parameters to pass to callback functions
+        @return: True if state transition is successful, False otherwise
         """
-        # 检查当前状态是否有对应事件的转换规则
+        # Check if current state has a transition rule for the event
         if self.state in self.transitions and event in self.transitions[self.state]:
-            # 执行与此状态和事件相关的所有回调
+            # Execute all callbacks associated with this state and event
             if (self.state, event) in self.callbacks:
                 for callback in self.callbacks[(self.state, event)]:
                     callback(*args, **kwargs)
             
-            # 执行状态转换
+            # Perform state transition
             old_state = self.state
             self.state = self.transitions[self.state][event]
             return True
@@ -200,14 +200,14 @@ class StateMachine:
     
     def get_state(self):
         """
-        获取当前状态
-        @return: 当前状态值
+        Get current state
+        @return: Current state value
         """
         return self.state
 
 
 # ============================================================
-# Data Models / 模型
+# Data Models
 # ============================================================
 
 @dataclass
@@ -232,7 +232,7 @@ class Detection:
 
 
 # ============================================================
-# Serial Communication Service / 串口服务
+# Serial Communication Service
 # ============================================================
 
 class SerialService:
@@ -250,8 +250,8 @@ class SerialService:
         # For garbage type mapping
         waste_classifier = WasteClassifier()
         self.zero_mapping = max(waste_classifier.class_names.keys()) + 1
-        print(f"类别0将被映射到: {self.zero_mapping}")
-        print(f"整体偏移量: +{self.config.class_id_offset}")
+        print(f"Class 0 will be mapped to: {self.zero_mapping}")
+        print(f"Overall offset: +{self.config.class_id_offset}")
         # Initialize serial port if enabled
         if self.config.enable_serial:
             self._initialize_serial()
@@ -268,15 +268,15 @@ class SerialService:
                 timeout=0.1,
                 write_timeout=0.1
             )
-            print(f"STM32串口已初始化: {self.config.stm32_port}")
+            print(f"STM32 serial port initialized: {self.config.stm32_port}")
             
             # Start queue processing thread
             self.queue_thread = threading.Thread(target=self._process_queue)
             self.queue_thread.daemon = True
             self.queue_thread.start()
-            print("串口发送队列处理线程已启动")
+            print("Serial send queue processing thread started")
         except Exception as e:
-            print(f"STM32串口初始化失败: {str(e)}")
+            print(f"STM32 serial port initialization failed: {str(e)}")
             self.port = None
     
     def enqueue_detection(self, detection):
@@ -301,7 +301,7 @@ class SerialService:
             # Limit queue size to avoid memory issues
             if len(self.send_queue) >= 10:
                 self.send_queue = self.send_queue[-9:]
-                print("警告: 发送队列已满，丢弃旧数据")
+                print("Warning: Send queue is full, discarding old data")
             # Add data to queue
             self.send_queue.append({
                 "class_id": mapped_class_id,
@@ -325,7 +325,7 @@ class SerialService:
             try:
                 self._send_next_item()
             except Exception as e:
-                print(f"队列处理异常: {str(e)}")
+                print(f"Queue processing exception: {str(e)}")
             # Short sleep
             time.sleep(0.01)
     
@@ -337,11 +337,11 @@ class SerialService:
         
         if not self.port.is_open:
             try:
-                print("尝试重新打开串口...")
+                print("Attempting to reopen serial port...")
                 self.port.open()
-                print("串口重新打开成功")
+                print("Serial port reopened successfully")
             except Exception as e:
-                print(f"串口重新打开失败: {str(e)}")
+                print(f"Failed to reopen serial port: {str(e)}")
                 return
         
         # Get next item from queue
@@ -374,64 +374,64 @@ class SerialService:
             
             # Debug output
             if self.config.debug_window:
-                print("\n----- 串口发送详细数据 [DEBUG] -----")
-                print(f"十六进制数据: {' '.join([f'0x{b:02X}' for b in data])}")
+                print("\n----- Serial Send Detailed Data [DEBUG] -----")
+                print(f"Hexadecimal data: {' '.join([f'0x{b:02X}' for b in data])}")
                 
-                print("原始数据包结构:")
-                print(f"  [0] 0x{data[0]:02X} - 帧头1")
-                print(f"  [1] 0x{data[1]:02X} - 帧头2")
-                print(f"  [2] 0x{data[2]:02X} - 类别ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})")
-                print(f"  [3] 0x{data[3]:02X} - X坐标高8位")
-                print(f"  [4] 0x{data[4]:02X} - X坐标低8位")
-                print(f"  [5] 0x{data[5]:02X} - Y坐标高8位")
-                print(f"  [6] 0x{data[6]:02X} - Y坐标低8位")
-                print(f"  [7] 0x{data[7]:02X} - 方向 (1: w>h, 2: w<h)")
-                print(f"  [8] 0x{data[8]:02X} - 帧尾")
-                print(f"数据包总长度: {len(data)} 字节，实际写入: {bytes_written} 字节")
-                print(f"原始分类ID: {data_to_send['orig_class']} (十进制) -> {data_to_send['class_id']} (发送值)")
-                print(f"原始X坐标: {data_to_send['orig_x']} -> 拆分: 低8位=0x{data_to_send['x_low']:02X}, 高8位=0x{data_to_send['x_high']:02X}")
-                print(f"原始Y坐标: {data_to_send['orig_y']} -> 拆分: 低8位=0x{data_to_send['y_low']:02X}, 高8位=0x{data_to_send['y_high']:02X}")
-                print(f"方向: {data_to_send['direction']}")
-                print(f"数据在队列中等待时间: {time.time() - data_to_send['timestamp']:.3f}秒")
+                print("Original packet structure:")
+                print(f"  [0] 0x{data[0]:02X} - Header 1")
+                print(f"  [1] 0x{data[1]:02X} - Header 2")
+                print(f"  [2] 0x{data[2]:02X} - Class ID ({data_to_send['orig_class']} -> {data_to_send['class_id']})")
+                print(f"  [3] 0x{data[3]:02X} - X coordinate high 8 bits")
+                print(f"  [4] 0x{data[4]:02X} - X coordinate low 8 bits")
+                print(f"  [5] 0x{data[5]:02X} - Y coordinate high 8 bits")
+                print(f"  [6] 0x{data[6]:02X} - Y coordinate low 8 bits")
+                print(f"  [7] 0x{data[7]:02X} - Direction (1: w>h, 2: w<h)")
+                print(f"  [8] 0x{data[8]:02X} - Footer")
+                print(f"Packet total length: {len(data)} bytes, actually written: {bytes_written} bytes")
+                print(f"Original class ID: {data_to_send['orig_class']} (decimal) -> {data_to_send['class_id']} (sent value)")
+                print(f"Original X coordinate: {data_to_send['orig_x']} -> Split: low 8 bits=0x{data_to_send['x_low']:02X}, high 8 bits=0x{data_to_send['x_high']:02X}")
+                print(f"Original Y coordinate: {data_to_send['orig_y']} -> Split: low 8 bits=0x{data_to_send['y_low']:02X}, high 8 bits=0x{data_to_send['y_high']:02X}")
+                print(f"Direction: {data_to_send['direction']}")
+                print(f"Time data waited in queue: {time.time() - data_to_send['timestamp']:.3f} seconds")
                 print("-" * 50)
             
             # Notify that detection was sent
             self.event_bus.publish(DetectionEvent.DETECTION_SENT, data_to_send)
             
         except serial.SerialTimeoutException:
-            print("串口写入超时，可能是设备未响应")
+            print("Serial write timeout, possibly device not responding")
             # Put back in queue for retry
             with self.queue_lock:
                 self.send_queue.insert(0, data_to_send)
         
         except Exception as e:
-            print(f"串口发送错误: {str(e)}")
+            print(f"Serial send error: {str(e)}")
             # Retry sending data
             with self.queue_lock:
                 retry_count = data_to_send.get("retry", 0) + 1
                 if retry_count <= 3:  # Maximum 3 retries
                     data_to_send["retry"] = retry_count
                     self.send_queue.insert(0, data_to_send)
-                    print(f"数据将重试发送，第{retry_count}次尝试")
+                    print(f"Data will be retried, attempt {retry_count}")
     
     def cleanup(self):
         """Clean up resources"""
         self.is_running = False
-        print("正在清理串口资源...")
+        print("Cleaning up serial resources...")
         
         # Wait for queue thread to end
         if hasattr(self, "queue_thread") and self.queue_thread.is_alive():
             self.queue_thread.join(timeout=2.0)
-            print("队列处理线程已终止")
+            print("Queue processing thread terminated")
         
         # Close serial port
         if self.port and self.port.is_open:
             self.port.close()
-            print("串口已关闭")
+            print("Serial port closed")
 
 
 # ============================================================
-# Detection Service / 检测服务
+# Detection Service
 # ============================================================
 
 class DetectionService:
@@ -445,10 +445,10 @@ class DetectionService:
         
         # Colors for visualization
         self.colors = {
-            0: (86, 180, 233),   # 厨余垃圾 - 蓝色
-            1: (230, 159, 0),    # 可回收垃圾 - 橙色
-            2: (240, 39, 32),    # 有害垃圾 - 红色
-            3: (0, 158, 115),    # 其他垃圾 - 绿色
+            0: (86, 180, 233),   # Kitchen waste - Blue
+            1: (230, 159, 0),    # Recyclable waste - Orange
+            2: (240, 39, 32),    # Hazardous waste - Red
+            3: (0, 158, 115),    # Other waste - Green
         }
         
         # Detection state
@@ -468,62 +468,62 @@ class DetectionService:
     
     def _setup_state_machine(self):
         """
-        设置状态机的转换规则
-        1. 从IDLE状态开始，当接收到新的视频帧时转到DETECTING状态
-        2. 在DETECTING状态完成检测后，转到PROCESSING状态
-        3. 从PROCESSING状态准备发送数据时，转到SENDING状态
-        4. 数据发送完成后，从SENDING状态回到IDLE状态，准备下一帧处理
-        5. 任何状态下如果发生错误，都会转到ERROR状态
-        6. 从ERROR状态可以通过RESET事件重置回IDLE状态
+        Set up state machine transition rules
+        1. From IDLE state, transition to DETECTING state when a new video frame is received
+        2. From DETECTING state, transition to PROCESSING state after detection is completed
+        3. From PROCESSING state, transition to SENDING state when preparing to send detection results
+        4. After sending is complete, transition from SENDING state back to IDLE state for next frame processing
+        5. In any state, transition to ERROR state if an error occurs
+        6. From ERROR state, reset to IDLE state via RESET event
         """
-        # IDLE状态 -> DETECTING状态：当接收到新的视频帧
-        # 状态机的起点，表示系统从空闲状态开始接收新帧进行检测
+        # IDLE state -> DETECTING state: When a new video frame is received
+        # Starting point of the state machine, indicating the system begins receiving a new frame for detection from idle state
         self.state_machine.add_transition(
-            DetectionState.IDLE,                # 起始状态：空闲
-            DetectionEvent.FRAME_RECEIVED,      # 触发事件：收到新帧
-            DetectionState.DETECTING            # 目标状态：正在检测
+            DetectionState.IDLE,                # Starting state: Idle
+            DetectionEvent.FRAME_RECEIVED,      # Trigger event: New frame received
+            DetectionState.DETECTING            # Target state: Detecting
         )
         
-        # DETECTING状态 -> PROCESSING状态：当检测完成
-        # 当目标检测完成后，系统需要处理检测结果
+        # DETECTING state -> PROCESSING state: When detection is completed
+        # After object detection is completed, the system processes the detection results
         self.state_machine.add_transition(
-            DetectionState.DETECTING,           # 起始状态：正在检测
-            DetectionEvent.DETECTION_COMPLETED, # 触发事件：检测完成
-            DetectionState.PROCESSING           # 目标状态：正在处理结果
+            DetectionState.DETECTING,           # Starting state: Detecting
+            DetectionEvent.DETECTION_COMPLETED, # Trigger event: Detection completed
+            DetectionState.PROCESSING           # Target state: Processing results
         )
         
-        # PROCESSING状态 -> SENDING状态：当需要发送检测结果
-        # 处理完检测结果后，系统准备发送数据到下游设备（如STM32）
+        # PROCESSING state -> SENDING state: When detection results need to be sent
+        # After processing detection results, the system prepares to send data to downstream devices (e.g., STM32)
         self.state_machine.add_transition(
-            DetectionState.PROCESSING,          # 起始状态：正在处理结果
-            DetectionEvent.SEND_DETECTION,      # 触发事件：发送检测结果
-            DetectionState.SENDING              # 目标状态：正在发送
+            DetectionState.PROCESSING,          # Starting state: Processing results
+            DetectionEvent.SEND_DETECTION,      # Trigger event: Send detection results
+            DetectionState.SENDING              # Target state: Sending
         )
         
-        # SENDING状态 -> IDLE状态：当检测结果已发送
-        # 发送完成后，系统回到空闲状态，等待下一帧
+        # SENDING state -> IDLE state: When detection results have been sent
+        # After sending is complete, the system returns to idle state, waiting for the next frame
         self.state_machine.add_transition(
-            DetectionState.SENDING,             # 起始状态：正在发送
-            DetectionEvent.DETECTION_SENT,      # 触发事件：数据已发送
-            DetectionState.IDLE                 # 目标状态：回到空闲状态
+            DetectionState.SENDING,             # Starting state: Sending
+            DetectionEvent.DETECTION_SENT,      # Trigger event: Data sent
+            DetectionState.IDLE                 # Target state: Return to idle
         )
         
-        # 错误处理：任何状态下发生错误都会转到ERROR状态
-        # 这是一个全局错误处理机制，确保系统在任何异常情况下都能进入可控的错误状态
+        # Error handling: Transition to ERROR state from any state when an error occurs
+        # A global error handling mechanism to ensure the system enters a controlled error state in case of any exception
         for state in DetectionState:
-            if state != DetectionState.ERROR:   # 对除ERROR外的所有状态
+            if state != DetectionState.ERROR:   # For all states except ERROR
                 self.state_machine.add_transition(
-                    state,                       # 任何起始状态
-                    DetectionEvent.ERROR_OCCURRED, # 触发事件：发生错误
-                    DetectionState.ERROR         # 目标状态：错误状态
+                    state,                       # Any starting state
+                    DetectionEvent.ERROR_OCCURRED, # Trigger event: Error occurred
+                    DetectionState.ERROR         # Target state: Error state
                 )
         
-        # 从ERROR状态重置：通过RESET事件回到IDLE状态
-        # 提供从错误状态恢复的机制，重新开始检测流程
+        # Reset from ERROR state: Return to IDLE state via RESET event
+        # Provides a mechanism to recover from error state and restart the detection process
         self.state_machine.add_transition(
-            DetectionState.ERROR,               # 起始状态：错误状态
-            DetectionEvent.RESET,               # 触发事件：重置
-            DetectionState.IDLE                 # 目标状态：回到空闲状态
+            DetectionState.ERROR,               # Starting state: Error state
+            DetectionEvent.RESET,               # Trigger event: Reset
+            DetectionState.IDLE                 # Target state: Return to idle
         )
     
     def _load_model(self):
@@ -531,9 +531,9 @@ class DetectionService:
         try:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.model = YOLO(self.config.model_path)
-            print(f"YOLO模型已加载: {self.config.model_path}")
+            print(f"YOLO model loaded: {self.config.model_path}")
         except Exception as e:
-            print(f"加载模型失败: {str(e)}")
+            print(f"Failed to load model: {str(e)}")
             self.event_bus.publish(DetectionEvent.ERROR_OCCURRED, str(e))
     
     def start_processing_thread(self):
@@ -542,7 +542,7 @@ class DetectionService:
         self.process_thread = threading.Thread(target=self._process_queue)
         self.process_thread.daemon = True
         self.process_thread.start()
-        print("检测顺序处理线程已启动")
+        print("Detection queue processing thread started")
     
     def detect(self, frame):
         """Detect objects in a frame"""
@@ -627,7 +627,7 @@ class DetectionService:
                         self.processing_queue.append(detection)
                         
                         if self.config.debug_window:
-                            print(f"加入队列: {detection.display_text}, 面积: {detection.area}, 方向: {detection.direction}")
+                            print(f"Added to queue: {detection.display_text}, Area: {detection.area}, Direction: {detection.direction}")
             
             # Update state machine
             self.state_machine.trigger(DetectionEvent.DETECTION_COMPLETED, detections)
@@ -635,7 +635,7 @@ class DetectionService:
             return frame
             
         except Exception as e:
-            print(f"处理帧异常: {str(e)}")
+            print(f"Frame processing exception: {str(e)}")
             self.event_bus.publish(DetectionEvent.ERROR_OCCURRED, str(e))
             return frame
     
@@ -666,11 +666,11 @@ class DetectionService:
                 # Update state machine
                 self.state_machine.trigger(DetectionEvent.SEND_DETECTION, detection_to_process)
                 
-                print(f"\n发送检测: {detection_to_process.display_text}")
-                print(f"置信度: {detection_to_process.confidence:.2%}")
-                print(f"中心点位置: ({detection_to_process.center_x}, {detection_to_process.center_y})")
-                print(f"目标面积: {detection_to_process.area} 像素^2")
-                print(f"方向: {detection_to_process.direction}")
+                print(f"\nSending detection: {detection_to_process.display_text}")
+                print(f"Confidence: {detection_to_process.confidence:.2%}")
+                print(f"Center point position: ({detection_to_process.center_x}, {detection_to_process.center_y})")
+                print(f"Target area: {detection_to_process.area} pixels^2")
+                print(f"Direction: {detection_to_process.direction}")
                 print("-" * 30)
                 
                 # Publish for serial service to handle
@@ -684,19 +684,19 @@ class DetectionService:
     
     def cleanup(self):
         """Clean up resources"""
-        print("正在清理DetectionService资源...")
+        print("Cleaning up DetectionService resources...")
         self.is_processing = False
         
         if hasattr(self, "process_thread") and self.process_thread and self.process_thread.is_alive():
             try:
                 self.process_thread.join(timeout=2.0)
-                print("检测处理线程已终止")
+                print("Detection processing thread terminated")
             except Exception as e:
-                print(f"终止处理线程出错: {str(e)}")
+                print(f"Error terminating processing thread: {str(e)}")
 
 
 # ============================================================
-# Statistics Manager / 计数
+# Statistics Manager
 # ============================================================
 
 class StatisticsManager:
@@ -717,7 +717,7 @@ class StatisticsManager:
             "count": self.garbage_count,
             "type": detection.display_text,
             "quantity": 1,
-            "status": "正确",
+            "status": "Correct",
         })
     
     def get_statistics(self):
@@ -729,7 +729,7 @@ class StatisticsManager:
 
 
 # ============================================================
-# Application Class / 集成层
+# Application Class
 # ============================================================
 
 class WasteDetectionApp:
@@ -754,22 +754,22 @@ class WasteDetectionApp:
     def _setup_gpu(self):
         """Set up GPU if available"""
         use_gpu, device_info = setup_gpu()
-        print("\n设备信息:")
+        print("\nDevice information:")
         print(device_info)
         print("-" * 30)
     
     def run(self):
         """Run the application"""
         # Initialize camera
-        cap = find_camera(self.config.camera_width,self.config.camera_height)
+        cap = find_camera(self.config.camera_width, self.config.camera_height)
         if not cap:
-            print("找不到摄像头")
+            print("Camera not found")
             return
-        print("\n系统启动:")
-        print("- 摄像头已就绪")
-        print(f"- 调试窗口: {'开启' if self.config.debug_window else '关闭'}")
-        print(f"- 串口输出: {'开启' if self.config.enable_serial else '关闭'}")
-        print("- 按 'q' 键退出程序")
+        print("\nSystem startup:")
+        print("- Camera ready")
+        print(f"- Debug window: {'Enabled' if self.config.debug_window else 'Disabled'}")
+        print(f"- Serial output: {'Enabled' if self.config.enable_serial else 'Disabled'}")
+        print("- Press 'q' to exit the program")
         print("-" * 30)
         
         try:
@@ -777,7 +777,7 @@ class WasteDetectionApp:
                 # Read
                 ret, frame = cap.read()
                 if not ret:
-                    print("错误: 无法读取摄像头画面")
+                    print("Error: Unable to read camera frame")
                     break
                 
                 # Crop
@@ -792,11 +792,11 @@ class WasteDetectionApp:
                     window_name = "YOLO_detect"
                     cv2.imshow(window_name, frame)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
-                        print("\n程序正常退出")
+                        print("\nProgram exited normally")
                         break
                         
         except KeyboardInterrupt:
-            print("\n检测到键盘中断,程序退出")
+            print("\nKeyboard interrupt detected, program exiting")
             
         finally:
             # Clean up resources
@@ -817,7 +817,7 @@ class WasteDetectionApp:
 
 
 # ============================================================
-# Main Function / 主函数
+# Main Function
 # ============================================================
 
 def main():
