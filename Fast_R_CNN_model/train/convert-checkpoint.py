@@ -10,45 +10,45 @@ from torchvision.models.detection import fasterrcnn_resnet50_fpn_v2, FasterRCNN_
 from torchvision.models.detection import fasterrcnn_mobilenet_v3_large_fpn, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from torchvision.models.detection.backbone_utils import resnet_fpn_backbone
 
-# 类别名称 - 保持与训练脚本一致
-CLASS_NAMES = ["厨余垃圾", "可回收垃圾", "有害垃圾", "其他垃圾"]
+# Class names - keep consistent with training script
+CLASS_NAMES = ["Kitchen waste", "Recyclable waste", "Hazardous waste", "Other waste"]
 
-# 选择要使用的模型类型，确保与训练时一致
-MODEL_TYPE = "resnet50_fpn"  # 可选: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
+# Select the model type to use, ensure it matches the training configuration
+MODEL_TYPE = "resnet50_fpn"  # Options: "resnet50_fpn", "resnet18_fpn", "mobilenet_v3", "resnet50_fpn_v2"
 
 
 def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
-    """获取不同类型的Faster R-CNN模型"""
-    # num_classes需要+1，因为0是背景类
+    """Get different types of Faster R-CNN models"""
+    # num_classes needs +1 because 0 is the background class
     num_classes_with_bg = num_classes + 1
     
     if model_type == "resnet50_fpn":
-        # 标准版：ResNet50+FPN
+        # Standard version: ResNet50+FPN
         model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
     elif model_type == "resnet18_fpn":
-        # 轻量版：ResNet18+FPN
+        # Lightweight version: ResNet18+FPN
         backbone = resnet_fpn_backbone(
             'resnet18', 
             pretrained=True, 
             trainable_layers=3
         )
         
-        # 设置RPN的锚点生成器
+        # Set up anchor generator for RPN
         anchor_generator = AnchorGenerator(
             sizes=((32,), (64,), (128,), (256,), (512,)),
             aspect_ratios=((0.5, 1.0, 2.0),) * 5
         )
         
-        # 设置RoI池化的大小
+        # Set up RoI pooling size
         roi_pooler = torchvision.ops.MultiScaleRoIAlign(
             featmap_names=['0', '1', '2', '3'],
             output_size=7,
             sampling_ratio=2
         )
         
-        # 创建Faster R-CNN模型
+        # Create Faster R-CNN model
         model = FasterRCNN(
             backbone=backbone,
             num_classes=num_classes_with_bg,
@@ -56,7 +56,7 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
             box_roi_pool=roi_pooler
         )
     elif model_type == "mobilenet_v3":
-        # 超轻量版：MobileNetV3
+        # Ultra-lightweight version: MobileNetV3
         model = fasterrcnn_mobilenet_v3_large_fpn(weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights.DEFAULT)
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
@@ -65,54 +65,54 @@ def get_faster_rcnn_model(num_classes, model_type="resnet50_fpn"):
         in_features = model.roi_heads.box_predictor.cls_score.in_features
         model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes_with_bg)
     else:
-        raise ValueError(f"不支持的模型类型: {model_type}")
+        raise ValueError(f"Unsupported model type: {model_type}")
     
     return model
 
 
 def save_optimized_model(model, output_dir, device, model_type):
-    """保存优化后的模型，包括不同格式和精度"""
+    """Save the optimized model, including different formats and precisions"""
     os.makedirs(output_dir, exist_ok=True)
     
-    # 保存基本模型
+    # Save basic model
     model_path = os.path.join(output_dir, "model_final.pth")
     torch.save(model.state_dict(), model_path)
-    print(f"模型已保存至: {model_path}")
+    print(f"Model saved to: {model_path}")
     
-    # 导出模型（TorchScript格式）
+    # Export model (TorchScript format)
     try:
-        # 切换到评估模式
+        # Switch to evaluation mode
         model.eval()
         
-        # 使用示例输入创建脚本模型
+        # Create scripted model with example input
         dummy_input = [torch.rand(3, 640, 640).to(device)]
         script_model = torch.jit.trace(model, dummy_input)
         script_model_path = os.path.join(output_dir, "model_scripted.pt")
         torch.jit.save(script_model, script_model_path)
-        print(f"TorchScript模型已保存至: {script_model_path}")
+        print(f"TorchScript model saved to: {script_model_path}")
     except Exception as e:
-        print(f"TorchScript导出失败: {e}")
+        print(f"TorchScript export failed: {e}")
     
-    # 如果有CUDA，保存半精度模型
+    # If CUDA is available, save half-precision model
     if device != "cpu" and torch.cuda.is_available():
         try:
             model_fp16 = model.half()
             fp16_path = os.path.join(output_dir, "model_fp16.pth")
             torch.save(model_fp16.state_dict(), fp16_path)
-            print(f"FP16模型已保存至: {fp16_path}")
+            print(f"FP16 model saved to: {fp16_path}")
             
-            # 恢复为FP32
+            # Restore to FP32
             model = model.float()
         except Exception as e:
-            print(f"FP16模型保存失败: {e}")
+            print(f"FP16 model save failed: {e}")
     
-    # 导出ONNX模型（适用于树莓派部署）
+    # Export ONNX model (for Raspberry Pi deployment)
     try:
         dummy_input = torch.rand(1, 3, 640, 640).to(device)
         input_names = ["input"]
         output_names = ["boxes", "labels", "scores"]
         
-        # 临时创建一个支持ONNX导出的前向函数
+        # Temporarily create a forward function that supports ONNX export
         class ModelWrapper(torch.nn.Module):
             def __init__(self, model):
                 super(ModelWrapper, self).__init__()
@@ -137,72 +137,72 @@ def save_optimized_model(model, output_dir, device, model_type):
             output_names=output_names,
             opset_version=11
         )
-        print(f"ONNX模型已保存至: {onnx_path}")
+        print(f"ONNX model saved to: {onnx_path}")
     except Exception as e:
-        print(f"ONNX导出失败: {e}")
+        print(f"ONNX export failed: {e}")
     
-    # 模型量化（INT8）- 更适合在树莓派上运行
+    # Model quantization (INT8) - better for running on Raspberry Pi
     try:
-        # 注意：实际量化通常需要校准数据集
-        # 这里仅展示一个简化的量化过程
+        # Note: Actual quantization usually requires a calibration dataset
+        # Here we just show a simplified quantization process
         quantized_model = torch.quantization.quantize_dynamic(
             model, {torch.nn.Linear}, dtype=torch.qint8
         )
         q_path = os.path.join(output_dir, "model_quantized.pth")
         torch.save(quantized_model.state_dict(), q_path)
-        print(f"量化模型已保存至: {q_path}")
+        print(f"Quantized model saved to: {q_path}")
     except Exception as e:
-        print(f"量化模型保存失败: {e}")
+        print(f"Quantized model save failed: {e}")
     
-    print("\n模型导出完成！")
+    print("\nModel export completed!")
     return model_path
 
 
 def convert_checkpoint_to_final_model(checkpoint_path, output_dir, model_type=MODEL_TYPE):
-    """将指定的检查点文件转换为最终模型"""
+    """Convert specified checkpoint file to final model"""
     try:
-        print(f"开始将检查点 {checkpoint_path} 转换为最终模型...")
+        print(f"Starting conversion of checkpoint {checkpoint_path} to final model...")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"使用设备: {device}")
+        print(f"Using device: {device}")
         
-        # 清理内存
+        # Clean up memory
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
-        # 加载检查点
-        print(f"正在加载检查点: {checkpoint_path}")
+        # Load checkpoint
+        print(f"Loading checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=device)
         
-        # 创建新模型
-        print(f"创建模型架构 ({model_type})...")
+        # Create new model
+        print(f"Creating model architecture ({model_type})...")
         model = get_faster_rcnn_model(len(CLASS_NAMES), model_type=model_type)
         
-        # 从检查点加载模型参数
+        # Load model parameters from checkpoint
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
-        print("成功加载模型参数")
+        print("Successfully loaded model parameters")
         
-        # 切换到评估模式
+        # Switch to evaluation mode
         model.eval()
         
-        # 保存优化后的模型
-        print("\n正在保存和优化模型用于部署...")
+        # Save optimized model
+        print("\nSaving and optimizing model for deployment...")
         model_path = save_optimized_model(model, output_dir, device, model_type)
         
-        print(f"\n转换完成！模型已保存在 {output_dir} 目录中")
-        print(f"最终模型路径: {model_path}")
-        print("可以在树莓派上使用保存的ONNX或TorchScript模型进行部署。")
+        print(f"\nConversion completed! Model saved in {output_dir} directory")
+        print(f"Final model path: {model_path}")
+        print("You can use the saved ONNX or TorchScript model for deployment on Raspberry Pi.")
         
         return model_path
     
     except Exception as e:
-        print(f"\n转换过程中发生错误: {str(e)}")
+        print(f"\nError occurred during conversion: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
     finally:
-        print("\n脚本执行完毕。正在清理...")
+        print("\nScript execution completed. Cleaning up...")
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -211,23 +211,23 @@ def convert_checkpoint_to_final_model(checkpoint_path, output_dir, model_type=MO
 if __name__ == "__main__":
     import argparse
     
-    # 创建命令行参数解析器
-    parser = argparse.ArgumentParser(description='将训练中的检查点模型转换为可部署的最终模型')
+    # Create command line argument parser
+    parser = argparse.ArgumentParser(description='Convert training checkpoint model to deployable final model')
     parser.add_argument('--model_path', type=str, default='./output/model_epoch_35.pth',
-                        help='检查点文件路径 (默认: ./output/model_epoch_35.pth)')
+                        help='Checkpoint file path (default: ./output/model_epoch_35.pth)')
     parser.add_argument('--out_dir', type=str, default='./output/final_model',
-                        help='输出目录 (默认: ./output/final_model)')
+                        help='Output directory (default: ./output/final_model)')
     parser.add_argument('--model_type', type=str, default=MODEL_TYPE,
                         choices=['resnet50_fpn', 'resnet18_fpn', 'mobilenet_v3', 'resnet50_fpn_v2'],
-                        help=f'模型类型 (默认: {MODEL_TYPE})')
+                        help=f'Model type (default: {MODEL_TYPE})')
     
-    # 解析命令行参数
+    # Parse command line arguments
     args = parser.parse_args()
     
-    print(f"使用参数：")
-    print(f"  - 模型路径: {args.model_path}")
-    print(f"  - 输出目录: {args.out_dir}")
-    print(f"  - 模型类型: {args.model_type}")
+    print(f"Using parameters:")
+    print(f"  - Model path: {args.model_path}")
+    print(f"  - Output directory: {args.out_dir}")
+    print(f"  - Model type: {args.model_type}")
     
-    # 执行转换
+    # Execute conversion
     convert_checkpoint_to_final_model(args.model_path, args.out_dir, args.model_type)
