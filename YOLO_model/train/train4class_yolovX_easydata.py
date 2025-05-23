@@ -13,26 +13,26 @@ import gc
 import torch
 from concurrent.futures import ThreadPoolExecutor
 
-select_model = "yolo12s.pt"  # 选择的模型,默认为yolo12s,可以更改
-datapath = "./label"  # 根据实际情况修改
+select_model = "yolo12s.pt"  # Selected model, defaults to yolo12s, can be changed
+datapath = "./label"  # Modify according to the actual situation
 
 def validate_json_file(json_path):
     """
-    验证 JSON 文件是否有效。
-    返回 True 表示有效，False 表示无效。
+    Validates if a JSON file is valid.
+    Returns True if valid, False otherwise.
     """
     try:
         with open(json_path, "r", encoding="utf-8") as f:
             json.load(f)
         return True
     except json.JSONDecodeError:
-        print(f"警告: JSON 解码错误 - 无效的 JSON 文件: {json_path}")
+        print(f"Warning: JSON decode error - invalid JSON file: {json_path}")
         return False
     except UnicodeDecodeError:
-        print(f"警告: Unicode 解码错误 - 无效的 JSON 文件: {json_path}")
+        print(f"Warning: Unicode decode error - invalid JSON file: {json_path}")
         return False
     except Exception as e:
-        print(f"警告: 无法读取 JSON 文件 {json_path} - 错误: {e}")
+        print(f"Warning: Cannot read JSON file {json_path} - error: {e}")
         return False
 
 # Helper function to check a single image and its label file
@@ -42,72 +42,72 @@ def _check_single_file(img_file, data_dir):
     base_name = os.path.splitext(img_file)[0]
     json_file = os.path.join(data_dir, base_name + ".json")
 
-    # 检查图片完整性
+    # Check image integrity
     try:
         img = cv2.imread(img_path)
         if img is None:
-            print(f"警告: 损坏或无效的图片文件: {img_file}")
+            print(f"Warning: Corrupted or invalid image file: {img_file}")
             return None # Indicate failure
-        # 检查图片尺寸是否合理
+        # Check if image dimensions are reasonable
         height, width = img.shape[:2]
         if height < 10 or width < 10:
-            print(f"警告: 图片尺寸过小: {img_file}")
+            print(f"Warning: Image dimensions too small: {img_file}")
             return None # Indicate failure
     except Exception as e:
-        print(f"警告: 读取图片 {img_file} 时出错: {e}")
+        print(f"Warning: Error reading image {img_file}: {e}")
         return None # Indicate failure
 
-    # 检查标签文件是否存在且有效
+    # Check if label file exists and is valid
     if os.path.exists(json_file):
-        # 确保标签文件确实是一个 JSON 文件
+        # Ensure label file is indeed a JSON file
         if not json_file.lower().endswith(".json"):
-            print(f"警告: 标签文件扩展名不正确 (应为 .json): {json_file}")
+            print(f"Warning: Incorrect label file extension (should be .json): {json_file}")
             return None # Indicate failure
 
-        # 验证 JSON 文件内容 (first check validity)
+        # Validate JSON file content (first check validity)
         if not validate_json_file(json_file):
              # validate_json_file already printed a warning
             return None # Indicate failure
 
-        # 验证 JSON 文件结构 (second check structure)
+        # Validate JSON file structure (second check structure)
         try:
             with open(json_file, "r", encoding="utf-8") as f:
                 label_data = json.load(f)
             if "labels" not in label_data:
-                print(f"警告: 标签文件结构无效 (缺少 'labels' 键): {json_file}")
+                print(f"Warning: Invalid label file structure (missing 'labels' key): {json_file}")
                 return None # Indicate failure
             # If all checks pass, return the image file name
             return img_file
         except Exception as e:
             # Catch errors during the structure check read
-            print(f"警告: 处理标签文件 {json_file} (结构检查) 时发生错误: {e}")
+            print(f"Warning: Error processing label file {json_file} (structure check): {e}")
             return None # Indicate failure
     else:
-        print(f"警告: 找不到对应的标签文件: {json_file}")
+        print(f"Warning: Corresponding label file not found: {json_file}")
         return None # Indicate failure
 
 
 def check_and_clean_dataset(data_dir):
-    """检查数据集完整性并清理无效数据 (Parallelized Version)"""
-    print("正在检查数据集完整性 (并行)...")
+    """Checks dataset integrity and cleans invalid data (Parallelized Version)"""
+    print("Checking dataset integrity (parallel)...")
     image_extensions = (".jpg", ".jpeg", ".png")
 
     try:
         # Check if data_dir exists before listing
         if not os.path.isdir(data_dir):
-             print(f"错误: 数据目录不存在或不是一个目录: {data_dir}")
+             print(f"Error: Data directory does not exist or is not a directory: {data_dir}")
              return []
         all_files = os.listdir(data_dir)
     except Exception as e:
-        print(f"错误: 无法列出目录 {data_dir}: {e}")
+        print(f"Error: Cannot list directory {data_dir}: {e}")
         return []
 
     image_files = [
         f for f in all_files if f.lower().endswith(image_extensions)
     ]
-    print(f"找到 {len(image_files)} 个潜在图片文件")
+    print(f"Found {len(image_files)} potential image files")
     if not image_files:
-        print("目录中未找到支持的图片文件。")
+        print("No supported image files found in the directory.")
         return []
 
     valid_pairs = []
@@ -115,7 +115,7 @@ def check_and_clean_dataset(data_dir):
     # Determine max_workers, leave some cores free for other tasks
     # Use at least 1 worker even if cpu_count is None or 1
     max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
-    print(f"使用最多 {max_workers} 个 worker 线程进行检查...")
+    print(f"Using up to {max_workers} worker threads for checking...")
 
     # Use ThreadPoolExecutor for parallel execution
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -132,21 +132,21 @@ def check_and_clean_dataset(data_dir):
             except Exception as exc:
                 # Catch potential exceptions during future execution/result retrieval
                 # Although _check_single_file handles most internal errors
-                print(f'一个文件检查任务产生异常: {exc}')
+                print(f'A file check task generated an exception: {exc}')
 
-    print(f"\n检查完成。找到 {len(valid_pairs)} 对有效的图片和标签文件。")
+    print(f"\nCheck complete. Found {len(valid_pairs)} valid image and label file pairs.")
     return valid_pairs
 
 def create_data_yaml():
-    """创建数据配置文件 - 使用四大分类"""
+    """Create data configuration file - using four major categories"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     data = {
         "path": current_dir,
         "train": os.path.join(current_dir, "train/images"),
         "val": os.path.join(current_dir, "val/images"),
         "test": os.path.join(current_dir, "test/images"),
-        "names": {0: "厨余垃圾", 1: "可回收垃圾", 2: "有害垃圾", 3: "其他垃圾"},
-        "nc": 4,  # 改为4个大类
+        "names": {0: "Kitchen Waste", 1: "Recyclable Waste", 2: "Hazardous Waste", 3: "Other Waste"},
+        "nc": 4,  # Changed to 4 major categories
     }
 
     with open("data.yaml", "w", encoding="utf-8") as f:
@@ -227,115 +227,115 @@ def process_split(split_name, files, data_dir, use_symlinks=True):
 
 
 def prepare_dataset(data_dir, valid_pairs, use_symlinks=True):
-    """准备数据集 - 支持使用符号链接而不是复制文件来节省空间
+    """Prepare dataset - supports using symbolic links instead of copying files to save space
     
     Args:
-        data_dir: 包含图像和标签文件的源目录
-        valid_pairs: 有效的图像文件名列表
-        use_symlinks: 是否尝试使用符号链接而不是复制文件 (默认: True)
+        data_dir: Source directory containing image and label files
+        valid_pairs: List of valid image filenames
+        use_symlinks: Whether to try using symbolic links instead of copying files (default: True)
     """
-    # 确保验证集至少有10张图片
+    # Ensure validation set has at least 10 images
     if len(valid_pairs) < 15:
         raise ValueError(
-            f"有效数据对数量不足 ({len(valid_pairs)})。至少需要15张图片。"
+            f"Insufficient number of valid data pairs ({len(valid_pairs)}). At least 15 images are required."
         )
     
-    # 清理现有目录 - 改进的清理方法
-    print("\n正在清理现有的train/val/test目录...")
+    # Clean existing directories - improved cleaning method
+    print("\nCleaning existing train/val/test directories...")
     for split in ["train", "val", "test"]:
         split_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), split)
         if os.path.exists(split_path):
-            print(f"正在删除 {split_path} 目录...")
+            print(f"Deleting {split_path} directory...")
             try:
-                # 尝试直接删除目录
+                # Try to delete the directory directly
                 shutil.rmtree(split_path)
             except OSError as e:
-                print(f"无法直接删除目录 {split_path}，错误：{e}")
-                print(f"尝试逐个删除其中的文件和子目录...")
+                print(f"Cannot delete directory {split_path} directly, error: {e}")
+                print(f"Attempting to delete files and subdirectories individually...")
                 
-                # 逐个删除文件和目录
+                # Delete files and directories individually
                 for root, dirs, files in os.walk(split_path, topdown=False):
-                    # 先删除文件
+                    # Delete files first
                     for file in files:
                         file_path = os.path.join(root, file)
                         try:
                             os.remove(file_path)
-                            print(f"已删除文件: {file_path}")
+                            print(f"Deleted file: {file_path}")
                         except Exception as e:
-                            print(f"警告: 无法删除文件 {file_path}: {e}")
+                            print(f"Warning: Cannot delete file {file_path}: {e}")
                     
-                    # 再删除空目录
+                    # Then delete empty directories
                     for dir_name in dirs:
                         dir_path = os.path.join(root, dir_name)
                         try:
                             os.rmdir(dir_path)
-                            print(f"已删除目录: {dir_path}")
+                            print(f"Deleted directory: {dir_path}")
                         except Exception as e:
-                            print(f"警告: 无法删除目录 {dir_path}: {e}")
+                            print(f"Warning: Cannot delete directory {dir_path}: {e}")
                 
-                # 最后尝试删除主目录
+                # Finally, try to delete the main directory
                 try:
                     os.rmdir(split_path)
-                    print(f"已成功删除 {split_path}")
+                    print(f"Successfully deleted {split_path}")
                 except Exception as e:
-                    print(f"警告: 无法删除主目录 {split_path}: {e}")
-                    print(f"将尝试继续处理...")
+                    print(f"Warning: Cannot delete main directory {split_path}: {e}")
+                    print(f"Will attempt to continue processing...")
         
-        # 重新创建目录结构
-        print(f"创建 {split} 目录结构...")
+        # Recreate directory structure
+        print(f"Creating {split} directory structure...")
         for subdir in ["images", "labels"]:
             subdir_path = os.path.join(split_path, subdir)
             try:
                 os.makedirs(subdir_path, exist_ok=True)
-                print(f"已创建目录: {subdir_path}")
+                print(f"Created directory: {subdir_path}")
             except Exception as e:
-                print(f"错误: 无法创建目录 {subdir_path}: {e}")
+                print(f"Error: Cannot create directory {subdir_path}: {e}")
                 raise
 
-    # 数据集划分 (90% 训练, 5% 验证, 5% 测试)
-    print("将数据集划分为训练集、验证集和测试集...")
+    # Dataset splitting (90% train, 5% validation, 5% test)
+    print("Splitting dataset into training, validation, and test sets...")
     train_files, temp = train_test_split(valid_pairs, test_size=0.1, random_state=42)
     val_files, test_files = train_test_split(temp, test_size=0.5, random_state=42)
 
     splits = {"train": train_files, "val": val_files, "test": test_files}
 
-    # 使用 ThreadPoolExecutor 并行处理每个数据集分割
-    print("开始并行处理数据集划分...")
-    # 确定worker数量，为其他任务保留一些核心
+    # Use ThreadPoolExecutor to process each dataset split in parallel
+    print("Starting parallel processing of dataset splits...")
+    # Determine number of workers, reserve some cores for other tasks
     max_workers = max(1, os.cpu_count() // 2 if os.cpu_count() else 1)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 为每个划分提交任务，包括use_symlinks参数
+        # Submit tasks for each split, including use_symlinks parameter
         futures = {
             executor.submit(process_split, split_name, files, data_dir, use_symlinks): split_name
             for split_name, files in splits.items()
         }
 
-        # 等待所有任务完成并检查异常
+        # Wait for all tasks to complete and check for exceptions
         for future in futures:
             split_name = futures[future]
             try:
-                future.result()  # 等待任务完成并引发异常（如果有）
-                print(f"完成处理 {split_name} 划分。")
+                future.result()  # Wait for task to complete and raise exception (if any)
+                print(f"Finished processing {split_name} split.")
             except Exception as exc:
-                print(f'{split_name} 划分生成了一个异常: {exc}')
-                print(f'尝试继续处理其他划分...')
+                print(f'{split_name} split generated an exception: {exc}')
+                print(f'Attempting to continue processing other splits...')
 
-    print("\n数据集准备完成。")
-    print(f"训练集: {len(train_files)} 图片, 验证集: {len(val_files)} 图片, 测试集: {len(test_files)} 图片")
+    print("\nDataset preparation complete.")
+    print(f"Training set: {len(train_files)} images, Validation set: {len(val_files)} images, Test set: {len(test_files)} images")
     return len(train_files), len(val_files), len(test_files)
 
 def convert_bbox_to_yolo(bbox, img_width, img_height):
-    """转换边界框从x1,y1,x2,y2到YOLO格式"""
+    """Convert bounding box from x1,y1,x2,y2 to YOLO format"""
     x1, y1, x2, y2 = bbox["x1"], bbox["y1"], bbox["x2"], bbox["y2"]
 
-    # 计算中心点坐标和宽高
+    # Calculate center point coordinates and width/height
 
     x_center = (x1 + x2) / (2 * img_width)
     y_center = (y1 + y2) / (2 * img_height)
     width = (x2 - x1) / img_width
     height = (y2 - y1) / img_height
 
-    # 确保值在0-1范围内
+    # Ensure values are within the 0-1 range
 
     x_center = max(0, min(1, x_center))
     y_center = max(0, min(1, y_center))
@@ -346,12 +346,12 @@ def convert_bbox_to_yolo(bbox, img_width, img_height):
 
 
 def convert_labels(json_file, txt_file):
-    """转换为四大类"""
+    """Convert to four major categories"""
     try:
         if not os.path.exists(json_file):
             print(f"Warning: JSON file not found: {json_file}")
             return False
-        # 获取图片路径
+        # Get image path
 
         base_name = os.path.splitext(json_file)[0]
         possible_extensions = [".jpg", ".jpeg", ".png"]
@@ -373,24 +373,24 @@ def convert_labels(json_file, txt_file):
 
         with open(json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # 细分类到大分类的映射
+        # Mapping from fine-grained categories to major categories
 
         category_mapping = {
-            # 厨余垃圾 (0)
+            # Kitchen Waste (0)
             "Kitchen_waste": 0,
             "potato": 0,
             "daikon": 0,
             "carrot": 0,
-            # 可回收垃圾 (1)
+            # Recyclable Waste (1)
             "Recyclable_waste": 1,
             "bottle": 1,
             "can": 1,
-            # 有害垃圾 (2)
+            # Hazardous Waste (2)
             "Hazardous_waste": 2,
             "battery": 2,
             "drug": 2,
             "inner_packing": 2,
-            # 其他垃圾 (3)
+            # Other Waste (3)
             "Other_waste": 3,
             "tile": 3,
             "stone": 3,
@@ -410,7 +410,7 @@ def convert_labels(json_file, txt_file):
                     if class_name not in category_mapping:
                         print(f"Warning: Unknown class {class_name} in {json_file}")
                         continue
-                    # 直接使用大分类ID
+                    # Directly use major category ID
 
                     category_id = category_mapping[class_name]
 
@@ -447,7 +447,7 @@ def convert_labels(json_file, txt_file):
 
 
 def load_yolo_bbox(txt_path):
-    """加载YOLO格式的边界框"""
+    """Load YOLO format bounding boxes"""
     bboxes = []
     class_labels = []
 
@@ -465,7 +465,7 @@ def load_yolo_bbox(txt_path):
 
 
 def save_yolo_bbox(bboxes, class_labels, txt_path):
-    """保存YOLO格式的边界框"""
+    """Save YOLO format bounding boxes"""
     with open(txt_path, "w") as f:
         for bbox, class_label in zip(bboxes, class_labels):
             x_center, y_center, width, height = bbox
@@ -474,64 +474,64 @@ def save_yolo_bbox(bboxes, class_labels, txt_path):
             )
 
 def save_quantized_models(weights_dir, data_yaml_path):
-    """加载最佳模型并保存FP16版本"""
+    """Load the best model and save FP16 version"""
     import shutil
     
     best_pt_path = os.path.join(weights_dir, 'best.pt')
     if not os.path.exists(best_pt_path):
-        print(f"错误: {best_pt_path} 未找到，无法保存量化模型。")
+        print(f"Error: {best_pt_path} not found, cannot save quantized model.")
         return
 
-    print(f"\n正在从 {best_pt_path} 加载最佳模型...")
+    print(f"\nLoading best model from {best_pt_path}...")
     try:
         model = YOLO(best_pt_path)
     except Exception as e:
-        print(f"加载模型 {best_pt_path} 时出错: {e}")
+        print(f"Error loading model {best_pt_path}: {e}")
         return
 
-    # 已移除FP32权重保存部分
+    # FP32 weight saving part removed
 
-    # 创建FP16模型
-    print("\n创建FP16模型...")
-    # 复制原始模型
+    # Create FP16 model
+    print("\nCreating FP16 model...")
+    # Copy original model
     fp16_model_path = os.path.join(weights_dir, 'best_fp16.pt')
     shutil.copy(best_pt_path, fp16_model_path)
     
-    # 加载副本并转换为FP16
+    # Load copy and convert to FP16
     fp16_model = YOLO(fp16_model_path)
     if hasattr(fp16_model, 'model'):
         fp16_model.model = fp16_model.model.half()
-        # 保存转换后的模型
+        # Save converted model
         fp16_model.save(fp16_model_path)
-        print(f"FP16模型已保存至 {fp16_model_path}")
+        print(f"FP16 model saved to {fp16_model_path}")
     else:
-        print("无法转换为FP16模型：模型结构不符合预期")
+        print("Cannot convert to FP16 model: model structure not as expected")
     
-    # 清理内存
+    # Clean up memory
     del fp16_model
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    # 导出TorchScript模型（可选但有用）
+    # Export TorchScript model (optional but useful)
     try:
-        print("\n尝试导出TorchScript格式模型...")
+        print("\nAttempting to export TorchScript format model...")
         torchscript_results = model.export(format='torchscript')
         if hasattr(torchscript_results, 'saved_model'):
             ts_path = torchscript_results.saved_model
-            print(f"TorchScript模型已导出至: {ts_path}")
+            print(f"TorchScript model exported to: {ts_path}")
             
-            # 移动到目标位置（如果导出位置不在weights_dir中）
+            # Move to target location (if export location is not in weights_dir)
             if os.path.dirname(ts_path) != weights_dir:
                 ts_target_path = os.path.join(weights_dir, 'best.torchscript')
                 shutil.copy(ts_path, ts_target_path)
-                print(f"TorchScript模型已复制到: {ts_target_path}")
+                print(f"TorchScript model copied to: {ts_target_path}")
     except Exception as e:
-        print(f"TorchScript导出失败: {e}")
+        print(f"TorchScript export failed: {e}")
 
-    print("\n模型导出和保存操作完成！")
+    print("\nModel export and save operations complete!")
     
-    # 清理内存
+    # Clean up memory
     del model
     gc.collect()
     if torch.cuda.is_available():
@@ -539,71 +539,71 @@ def save_quantized_models(weights_dir, data_yaml_path):
 
 def train_yolo(use_augmentation=False, use_mixed_precision=False, config="default", resume=False):
     """
-    YOLO训练配置，增加数据增强、混合精度训练和多种训练配置选项。
-    支持CPU和GPU训练。
+    YOLO training configuration, adds data augmentation, mixed-precision training, and multiple training configuration options.
+    Supports CPU and GPU training.
     Args:
-        use_augmentation (bool): 是否启用数据增强，默认为False。
-        use_mixed_precision (bool): 是否启用混合精度训练，默认为False。
-        config (str): 训练配置模式，默认是'default'。可选项包括:
-            - 'default': 默认配置
-            - 'large_dataset': 数据集较大时的优化配置
-            - 'small_dataset': 数据集较小时的优化配置
-            - 'focus_accuracy': 注重检测精度时的优化配置
-            - 'focus_speed': 注重训练速度时的优化配置
-            - 'severmode': 使用租用服务器时的优化配置（完全覆盖原有配置） 
+        use_augmentation (bool): Whether to enable data augmentation, defaults to False.
+        use_mixed_precision (bool): Whether to enable mixed-precision training, defaults to False.
+        config (str): Training configuration mode, default is 'default'. Options include:
+            - 'default': Default configuration
+            - 'large_dataset': Optimized configuration for large datasets
+            - 'small_dataset': Optimized configuration for small datasets
+            - 'focus_accuracy': Optimized configuration for detection accuracy
+            - 'focus_speed': Optimized configuration for training speed
+            - 'servermode': Optimized configuration for rented servers (completely overrides original config) 
     """
-    model = YOLO(select_model)  # 加载预训练的YOLO模型权重
+    model = YOLO(select_model)  # Load pre-trained YOLO model weights
     num_workers = max(1, min(os.cpu_count() - 2, 8))
     device = "cpu"
     if torch.cuda.is_available():
         device = "0"
     if device == "cpu":
-        batch_size = 4  # 降低batch size
-        workers = max(1, min(os.cpu_count() - 1, 4))  # 减少worker数量
-        use_mixed_precision = False  # CPU不支持混合精度训练
+        batch_size = 4  # Reduce batch size
+        workers = max(1, min(os.cpu_count() - 1, 4))  # Reduce number of workers
+        use_mixed_precision = False  # CPU does not support mixed-precision training
     else:
-        batch_size = 10  # 原始batch size
+        batch_size = 10  # Original batch size
         workers = num_workers
-    # 基础训练参数
+    # Basic training parameters
 
     train_args = {
-        "data": "data.yaml",  # 数据集配置文件路径
-        "epochs": 120,  # 训练的总轮数
-        "imgsz": 640,  # 输入图像的尺寸
-        "batch": batch_size,  # 根据设备调整的批次大小
-        "workers": workers,  # 根据设备调整的工作线程数
-        "device": device,  # 自动选择的训练设备
-        "patience": 15,  # 提前停止的容忍轮数
-        "save_period": 5,  # 每隔多少轮保存一次模型
-        "exist_ok": True,  # 如果结果目录存在，是否覆盖
-        "project": os.path.dirname(os.path.abspath(__file__)),  # 训练结果的项目目录
-        "name": "runs/train",  # 训练运行的名称
-        "optimizer": "AdamW",  # 优化器类型
-        "lr0": 0.0005,  # 初始学习率
-        "lrf": 0.01,  # 最终学习率与初始学习率的比例
-        "momentum": 0.937,  # 优化器的动量参数
-        "weight_decay": 0.0005,  # 权重衰减（正则化）系数
-        "warmup_epochs": 10,  # 预热阶段的轮数
-        "warmup_momentum": 0.5,  # 预热阶段的动量
-        "warmup_bias_lr": 0.05,  # 预热阶段偏置的学习率
-        "box": 4.0,  # 边界框回归损失权重
-        "cls": 2.0,  # 分类损失权重
-        "dfl": 1.5,  # 分布式焦点损失权重
-        "close_mosaic": 0,  # 是否关闭马赛克数据增强
-        "nbs": 64,  # 基础批次大小
-        "overlap_mask": False,  # 是否使用重叠掩码
-        "multi_scale": True,  # 是否启用多尺度训练
-        "single_cls": False,  # 是否将所有类别视为单一类别
+        "data": "data.yaml",  # Dataset configuration file path
+        "epochs": 120,  # Total number of training epochs
+        "imgsz": 640,  # Input image size
+        "batch": batch_size,  # Batch size adjusted according to device
+        "workers": workers,  # Number of worker threads adjusted according to device
+        "device": device,  # Automatically selected training device
+        "patience": 15,  # Number of epochs for early stopping tolerance
+        "save_period": 5,  # Save model every N epochs
+        "exist_ok": True,  # Whether to overwrite if results directory exists
+        "project": os.path.dirname(os.path.abspath(__file__)),  # Project directory for training results
+        "name": "runs/train",  # Name of the training run
+        "optimizer": "AdamW",  # Optimizer type
+        "lr0": 0.0005,  # Initial learning rate
+        "lrf": 0.01,  # Ratio of final learning rate to initial learning rate
+        "momentum": 0.937,  # Optimizer momentum parameter
+        "weight_decay": 0.0005,  # Weight decay (regularization) coefficient
+        "warmup_epochs": 10,  # Number of epochs for warmup phase
+        "warmup_momentum": 0.5,  # Momentum during warmup phase
+        "warmup_bias_lr": 0.05,  # Learning rate for bias during warmup phase
+        "box": 4.0,  # Bounding box regression loss weight
+        "cls": 2.0,  # Classification loss weight
+        "dfl": 1.5,  # Distributed Focal Loss weight
+        "close_mosaic": 0,  # Whether to close mosaic data augmentation
+        "nbs": 64,  # Nominal batch size
+        "overlap_mask": False,  # Whether to use overlap mask
+        "multi_scale": True,  # Whether to enable multi-scale training
+        "single_cls": False,  # Whether to treat all classes as a single class
         "rect": True,
         "cache": True,
     }
     train_args.update({"resume": resume})
-    # 根据配置模式更新训练参数
+    # Update training parameters based on configuration mode
 
     if config == "large_dataset":
         train_args.update(
             {
-                "batch": 32 if device == "0" else 4,  # GPU使用32，CPU使用4
+                "batch": 32 if device == "0" else 4,  # Use 32 for GPU, 4 for CPU
                 "lr0": 0.001,
                 "epochs": 150,
                 "patience": 30,
@@ -612,7 +612,7 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
     elif config == "small_dataset":
         train_args.update(
             {
-                "batch": 16 if device == "0" else 4,  # GPU使用16，CPU使用4
+                "batch": 16 if device == "0" else 4,  # Use 16 for GPU, 4 for CPU
                 "lr0": 0.0001,
                 "weight_decay": 0.001,
                 "warmup_epochs": 15,
@@ -626,12 +626,12 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
                 "cls": 4.0,
                 "dfl": 3.0,
                 "patience": 20,
-                "batch": 16 if device == "0" else 4,  # GPU使用16，CPU使用4
+                "batch": 16 if device == "0" else 4,  # Use 16 for GPU, 4 for CPU
                 "epochs": 300,
                 "lr0": 0.001,
                 "lrf": 0.01,
                 "weight_decay": 0.0005,
-                "dropout": 0.1,# 添加dropout,减少过拟合
+                "dropout": 0.1, # Add dropout to reduce overfitting
             }
         )
     elif config == "focus_speed":
@@ -640,98 +640,98 @@ def train_yolo(use_augmentation=False, use_mixed_precision=False, config="defaul
                 "imgsz": 512,
                 "epochs": 150,
                 "patience": 30,
-                "batch": 48 if device == "0" else 4,  # GPU使用48，CPU使用4
+                "batch": 48 if device == "0" else 4,  # Use 48 for GPU, 4 for CPU
             }
         )
-    elif config == "severmode":
+    elif config == "servermode":
         server_worker = int(os.cpu_count() / 2)
         train_args.update({
-            # 保留focus_accuracy的精度优化参数
-            "box": 7.5,                # 提高边界框损失权重
-            "cls": 4.0,                # 提高分类损失权重
-            "dfl": 3.0,                # 提高DFL损失权重
-            "patience": 15,            # 保持高容忍度确保最佳精度
-            "epochs": 150,             # 保持较长训练周期
-            "dropout": 0.1,            # 保留dropout防止过拟合
-            # 服务器性能优化参数
+            # Retain accuracy optimization parameters from focus_accuracy
+            "box": 7.5,                # Increase bounding box loss weight
+            "cls": 4.0,                # Increase classification loss weight
+            "dfl": 3.0,                # Increase DFL loss weight
+            "patience": 15,            # Maintain high tolerance to ensure optimal accuracy
+            "epochs": 150,             # Maintain a longer training cycle
+            "dropout": 0.1,            # Retain dropout to prevent overfitting
+            # Server performance optimization parameters
             "imgsz": 640,             
-            "batch": 32,               # 提高batch size
-            "lr0": 0.001,              # focus_accuracy的学习率
-            "lrf": 0.01,               # focus_accuracy的学习率衰减
-            "weight_decay": 0.0005,    # 保留weight_decay参数
-            "optimizer": "AdamW",      # 使用AdamW优化器
-            "workers": server_worker ,  # 充分利用CPU核心
-            "device": "0",             # 确保使用GPU
-            "half": True,              # 强制启用半精度训练
-            "cache": "ram",            # 使用RAM缓存加速
-            "cos_lr": True,            # 使用余弦学习率调度
-            "warmup_epochs": 10,       # 保持充分的预热
-            #"close_mosaic": 50,        # 这里有bug,先关闭
-            "overlap_mask": True,      # 启用重叠掩码
-            "save_period": 5,         # 定期保存检查点
-            "multi_scale": True,       # 多尺度训练增强泛化能力
+            "batch": 32,               # Increase batch size
+            "lr0": 0.001,              # Learning rate from focus_accuracy
+            "lrf": 0.01,               # Learning rate decay from focus_accuracy
+            "weight_decay": 0.0005,    # Retain weight_decay parameter
+            "optimizer": "AdamW",      # Use AdamW optimizer
+            "workers": server_worker ,  # Fully utilize CPU cores
+            "device": "0",             # Ensure GPU is used
+            "half": True,              # Force enable half-precision training
+            "cache": "ram",            # Use RAM cache for acceleration
+            "cos_lr": True,            # Use cosine learning rate schedule
+            "warmup_epochs": 10,       # Maintain sufficient warmup
+            #"close_mosaic": 50,        # Bug here, disable for now
+            "overlap_mask": True,      # Enable overlap mask
+            "save_period": 5,         # Periodically save checkpoints
+            "multi_scale": True,       # Multi-scale training enhances generalization
         })
         
     elif config != "default":
-        print(f"警告: 未识别的配置模式 '{config}'，将使用默认配置。")
-    # 数据增强参数
+        print(f"Warning: Unrecognized configuration mode '{config}', using default configuration.")
+    # Data augmentation parameters
     if use_augmentation:
         augmentation_args = {
-            "augment": True,  # 启用数据增强
-            "degrees": 10.0,  # 随机旋转的角度范围
-            "scale": 0.2,  # 随机缩放的比例范围
-            "fliplr": 0.2,  # 随机水平翻转的概率
-            "flipud": 0.2,  # 随机垂直翻转的概率
-            #"hsv_h": 0.03,  # 随机调整色调的范围
-            #"hsv_s": 0.2,  # 随机调整饱和度的范围
-            #"hsv_v": 0.1,  # 随机调整明度的范围
-            #"mosaic": 0.1,  # 马赛克增强的比例
-            #"mixup": 0.1,  # 混合增强的比例
-            #"copy_paste": 0.05,  # 复制粘贴增强的比例
+            "augment": True,  # Enable data augmentation
+            "degrees": 10.0,  # Random rotation angle range
+            "scale": 0.2,  # Random scaling ratio range
+            "fliplr": 0.2,  # Probability of random horizontal flip
+            "flipud": 0.2,  # Probability of random vertical flip
+            #"hsv_h": 0.03,  # Random hue adjustment range
+            #"hsv_s": 0.2,  # Random saturation adjustment range
+            #"hsv_v": 0.1,  # Random brightness adjustment range
+            #"mosaic": 0.1,  # Mosaic augmentation ratio
+            #"mixup": 0.1,  # Mixup augmentation ratio
+            #"copy_paste": 0.05,  # Copy-paste augmentation ratio
         }
         train_args.update(augmentation_args)
     else:
-        # 强制关闭所有数据增强
+        # Force disable all data augmentation
         no_augment_args = {
-            "augment": False,  # 关闭数据增强
-            "degrees": 0.0,  # 禁用旋转
-            "scale": 0.0,  # 禁用缩放
-            "fliplr": 0.0,  # 禁用水平翻转
-            "flipud": 0.0,  # 禁用垂直翻转
-            "hsv_h": 0.0,  # 禁用色调调整
-            "hsv_s": 0.0,  # 禁用饱和度调整
-            "hsv_v": 0.0,  # 禁用明度调整
-            "mosaic": 0,  # 禁用马赛克
-            "mixup": 0,  # 禁用mixup
-            "copy_paste": 0,  # 禁用复制粘贴
+            "augment": False,  # Disable data augmentation
+            "degrees": 0.0,  # Disable rotation
+            "scale": 0.0,  # Disable scaling
+            "fliplr": 0.0,  # Disable horizontal flip
+            "flipud": 0.0,  # Disable vertical flip
+            "hsv_h": 0.0,  # Disable hue adjustment
+            "hsv_s": 0.0,  # Disable saturation adjustment
+            "hsv_v": 0.0,  # Disable brightness adjustment
+            "mosaic": 0,  # Disable mosaic
+            "mixup": 0,  # Disable mixup
+            "copy_paste": 0,  # Disable copy-paste
         }
         train_args.update(no_augment_args)
-    # 启用混合精度训练（仅在GPU上）
+    # Enable mixed-precision training (only on GPU)
 
     if use_mixed_precision and device == "0":
         train_args.update({"half": True})
     else:
         train_args.update({"half": False})
     try:
-        print(f"\n使用设备: {'GPU' if device == '0' else 'CPU'}")
+        print(f"\nUsing device: {'GPU' if device == '0' else 'CPU'}")
         print(f"Batch size: {train_args['batch']}")
-        print(f"混合精度训练: {'启用' if train_args.get('half', False) else '禁用'}\n")
+        print(f"Mixed-precision training: {'Enabled' if train_args.get('half', False) else 'Disabled'}\n")
         results = model.train(**train_args)
         
         # Force saving a best.pt if training was resumed
         if resume:
-            print("\n检测到resume=True，确保保存最终模型到best.pt...")
+            print("\nDetected resume=True, ensuring final model is saved to best.pt...")
             run_dir = results.save_dir if hasattr(results, 'save_dir') else train_args.get('project', '') + '/' + train_args.get('name', 'runs/train')
             weights_dir = os.path.join(run_dir, 'weights')
             last_pt_path = os.path.join(weights_dir, 'last.pt')
             best_pt_path = os.path.join(weights_dir, 'best.pt')
             
             if os.path.exists(last_pt_path):
-                # 复制 last.pt 到 best.pt，确保总有最新的模型可用于后处理
+                # Copy last.pt to best.pt, ensuring there's always an up-to-date model for post-processing
                 if not os.path.exists(best_pt_path) or resume:
-                    print(f"将 {last_pt_path} 复制到 {best_pt_path}...")
+                    print(f"Copying {last_pt_path} to {best_pt_path}...")
                     shutil.copy2(last_pt_path, best_pt_path)
-                    print(f"成功保存最终模型到 {best_pt_path}")
+                    print(f"Successfully saved final model to {best_pt_path}")
         
         return results
     except Exception as e:
@@ -746,7 +746,7 @@ def main():
             torch.cuda.empty_cache()
         data_dir = datapath
         
-        # 1. 检查数据集
+        # 1. Check dataset
         print("Step 1: Checking dataset...")
         valid_pairs = check_and_clean_dataset(data_dir)
         if not valid_pairs:
@@ -754,17 +754,17 @@ def main():
              return # Exit if no data
         gc.collect()
 
-        # 2. 创建配置文件
+        # 2. Create configuration file
         print("\nStep 2: Creating data.yaml...")
         create_data_yaml()
         # Define data_yaml_path here for later use
         project_path = os.path.dirname(os.path.abspath(__file__))
         data_yaml_path = os.path.join(project_path, "data.yaml")
 
-        # 3. 准备数据集 - 使用软链接
+        # 3. Prepare dataset - use symlinks
         print("\nStep 3: Preparing dataset with symbolic links...")
         try:
-             # 启用符号链接选项
+             # Enable symbolic link option
              train_size, val_size, test_size = prepare_dataset(data_dir, valid_pairs, use_symlinks=True)
              gc.collect()
              if val_size < 5: # Check validation set size after preparation
@@ -775,7 +775,7 @@ def main():
         
         print("\nStep 4: Starting training...")
         # Define your desired training config and resume flag
-        training_config = "severmode" # Example: Use 'severmode' config
+        training_config = "servermode" # Example: Use 'servermode' config
         resume_training = False       # Example: Start a new training run
         results = train_yolo(
             use_augmentation=True,      # Example: Enable augmentation
@@ -794,16 +794,27 @@ def main():
                  print(f"Found weights directory from results: {weights_dir}")
             else:
                  # Fallback: Construct the expected path (less reliable if name/project changed)
-                 run_name = train_args.get('name', 'runs/train') # Get name from train_args if possible
-                 project = train_args.get('project', project_path)
-                 # Find the latest run directory based on the expected project/name structure
-                 run_dirs = sorted(Path(project).glob(f"{Path(run_name).name}*/"), key=os.path.getmtime, reverse=True)
+                 # Try to get run_name and project from train_args if they were set there
+                 # This part assumes train_args is accessible or its relevant parts are passed/known
+                 # For simplicity, if train_args is not directly accessible here,
+                 # you might need to pass 'name' and 'project' from train_yolo or reconstruct them.
+                 # Assuming train_args was defined in a scope accessible here or its values are known:
+                 # run_name = train_args.get('name', 'runs/train') # Get name from train_args if possible
+                 # project = train_args.get('project', project_path)
+
+                 # A more robust fallback if train_args isn't available:
+                 # This requires knowing the default project and name structure.
+                 default_project = project_path # project_path defined earlier
+                 default_run_name_base = "runs/train" # Default name from train_args
+
+                 run_dirs = sorted(Path(default_project).glob(f"{Path(default_run_name_base).name}*/"), key=os.path.getmtime, reverse=True)
                  if run_dirs:
                      latest_run_dir = run_dirs[0]
                      weights_dir = os.path.join(latest_run_dir, 'weights')
-                     print(f"Constructed weights directory: {weights_dir}")
+                     print(f"Constructed weights directory (fallback): {weights_dir}")
                  else:
-                     print(f"Warning: Could not determine weights directory automatically.")
+                     print(f"Warning: Could not determine weights directory automatically (fallback).")
+
 
             if weights_dir and os.path.isdir(weights_dir):
                  save_quantized_models(weights_dir, data_yaml_path)
@@ -824,4 +835,3 @@ def main():
             
 if __name__ == "__main__":
     main()
-
