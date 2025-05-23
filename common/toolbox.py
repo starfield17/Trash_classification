@@ -5,29 +5,29 @@ import numpy as np
 
 def setup_gpu():
     if not torch.cuda.is_available():
-        return False, "未检测到GPU，将使用CPU进行推理"
+        return False, "No GPU detected, will use CPU for inference"
     device_name = torch.cuda.get_device_name(0)
-    return True, f"已启用GPU: {device_name}"
+    return True, f"GPU enabled: {device_name}"
 
 def find_ttyusb(max_index=10):
-    """查找可用的ttyUSB设备
+    """Find available ttyUSB devices
     
-    参数:
-        max_index: 最大查找索引，默认查找从ttyUSB0 ~ ttyUSB9
+    Args:
+        max_index: Maximum search index, default searches from ttyUSB0 to ttyUSB9
         
-    返回:
-        存在的ttyUSB设备路径字符串，如果未找到则返回None
+    Returns:
+        Path string of existing ttyUSB device, returns None if not found
     """
     for index in range(max_index):
         ttyusb_path = f"/dev/ttyUSB{index}"
         if os.path.exists(ttyusb_path):
-            print(f"成功找到可用ttyUSB设备: {ttyusb_path}")
+            print(f"Successfully found available ttyUSB device: {ttyusb_path}")
             return ttyusb_path
-    print("错误: 未找到任何可用的ttyUSB设备")
+    print("Error: No available ttyUSB devices found")
     return None
 
 def find_camera(width=1280, height=720):
-    """查找可用的摄像头并设置分辨率"""
+    """Find available camera and set resolution"""
     for index in range(10):
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
@@ -39,130 +39,130 @@ def find_camera(width=1280, height=720):
             actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
             
-            print(f"成功找到可用摄像头，索引为: {index}")
-            print(f"请求分辨率: {width}x{height}, 实际分辨率: {actual_width}x{actual_height}")
+            print(f"Successfully found available camera, index: {index}")
+            print(f"Requested resolution: {width}x{height}, Actual resolution: {actual_width}x{actual_height}")
             
             return cap
         cap.release()
-    print("错误: 未找到任何可用的摄像头")
+    print("Error: No available cameras found")
     return None
 
 def crop_frame(frame, target_width=720, target_height=720, mode='center', points=None):
     """
-    裁切视频帧到指定尺寸
+    Crop video frame to specified size
     
-    参数:
-        frame: 输入的视频帧（numpy数组，OpenCV图像格式）
-            例如：frame = cv2.imread('image.jpg') 或从摄像头获取的帧
+    Args:
+        frame: Input video frame (numpy array, OpenCV image format)
+            Example: frame = cv2.imread('image.jpg') or frame from camera
             
-        target_width: 目标宽度，默认为720
-            推荐值：根据模型输入要求或显示需求设置，常用值有224, 256, 320, 480, 640, 720
-            例如：target_width=480 表示裁切后图像宽度为480像素
+        target_width: Target width, default 720
+            Recommended values: Set according to model input requirements or display needs, common values: 224, 256, 320, 480, 640, 720
+            Example: target_width=480 means cropped image width is 480 pixels
             
-        target_height: 目标高度，默认为720
-            推荐值：根据模型输入要求或显示需求设置，常用值有224, 256, 320, 480, 640, 720
-            例如：target_height=480 表示裁切后图像高度为480像素
+        target_height: Target height, default 720
+            Recommended values: Set according to model input requirements or display needs, common values: 224, 256, 320, 480, 640, 720
+            Example: target_height=480 means cropped image height is 480 pixels
             
-        mode: 裁切模式，可选值为：
-            - 'center': 从中心裁切（默认）
-                适用场景：当目标物体位于图像中央时使用，如正面人像、居中摆放的物品等
-                用法：保留图像中央区域，裁剪掉周围区域
-                示例：crop_frame(frame, 480, 480, mode='center')
-                结果：从图像中央提取480x480的区域
+        mode: Crop mode, options:
+            - 'center': Crop from center (default)
+                Use case: When target object is at image center, like frontal portraits, centered objects
+                Usage: Keep center region, crop surrounding areas
+                Example: crop_frame(frame, 480, 480, mode='center')
+                Result: Extract 480x480 region from image center
                 
-            - 'left': 从左侧裁切
-                适用场景：当目标物体位于图像左侧时使用，如向左侧靠近的物体
-                用法：保留图像左侧区域，裁剪掉右侧区域
-                示例：crop_frame(frame, 300, 720, mode='left')
-                结果：从图像左侧提取宽300高720的区域，保留了图像的左侧部分
+            - 'left': Crop from left side
+                Use case: When target object is on the left side of image
+                Usage: Keep left region, crop right side
+                Example: crop_frame(frame, 300, 720, mode='left')
+                Result: Extract 300x720 region from left side, keeping left portion
                 
-            - 'right': 从右侧裁切
-                适用场景：当目标物体位于图像右侧时使用，如向右侧靠近的物体
-                用法：保留图像右侧区域，裁剪掉左侧区域
-                示例：crop_frame(frame, 300, 720, mode='right')
-                结果：从图像右侧提取宽300高720的区域，保留了图像的右侧部分
+            - 'right': Crop from right side
+                Use case: When target object is on the right side of image
+                Usage: Keep right region, crop left side
+                Example: crop_frame(frame, 300, 720, mode='right')
+                Result: Extract 300x720 region from right side, keeping right portion
                 
-            - 'top': 从顶部裁切
-                适用场景：当目标物体位于图像上方时使用，如上方摆放的物品、俯视视角
-                用法：保留图像上部区域，裁剪掉下部区域
-                示例：crop_frame(frame, 720, 300, mode='top')
-                结果：从图像顶部提取宽720高300的区域，保留了图像的上部分
+            - 'top': Crop from top
+                Use case: When target object is at top of image, like overhead view
+                Usage: Keep top region, crop bottom
+                Example: crop_frame(frame, 720, 300, mode='top')
+                Result: Extract 720x300 region from top, keeping upper portion
                 
-            - 'bottom': 从底部裁切
-                适用场景：当目标物体位于图像下方时使用，如桌面上的物品、仰视视角
-                用法：保留图像下部区域，裁剪掉上部区域
-                示例：crop_frame(frame, 720, 300, mode='bottom')
-                结果：从图像底部提取宽720高300的区域，保留了图像的下部分
+            - 'bottom': Crop from bottom
+                Use case: When target object is at bottom of image, like desktop objects, upward view
+                Usage: Keep bottom region, crop top
+                Example: crop_frame(frame, 720, 300, mode='bottom')
+                Result: Extract 720x300 region from bottom, keeping lower portion
                 
-            注意：如果原始图像尺寸小于目标尺寸，函数会自动调整目标尺寸为较小的值
+            Note: If original image size is smaller than target size, function will automatically adjust target size
             
-        points: 指定裁切区域的左上角和右下角坐标，格式为 [(x1, y1), (x2, y2)]
-            当提供此参数时，将忽略 target_width、target_height 和 mode 参数
-            示例:
+        points: Specify crop region with top-left and bottom-right coordinates, format: [(x1, y1), (x2, y2)]
+            When provided, will ignore target_width, target_height and mode parameters
+            Example:
             points=[(100, 100), (500, 400)] 
-            frame = crop_frame(frame, points=points)#将裁切从坐标(100,100)到(500,400)的矩形区域
-    返回:
-        裁切后的视频帧
+            frame = crop_frame(frame, points=points) # Will crop rectangular region from (100,100) to (500,400)
+    Returns:
+        Cropped video frame
     """
-    # 获取原始帧的尺寸
+    # Get original frame dimensions
     frame_height, frame_width = frame.shape[:2]
     
-    # 直接按坐标点裁切
+    # Direct crop by coordinate points
     if points is not None and len(points) == 2:
-        # 左上角和右下角坐标
+        # Top-left and bottom-right coordinates
         (start_x, start_y), (end_x, end_y) = points
         
-        # 确保坐标在有效范围内
+        # Ensure coordinates are within valid range
         start_x = max(0, min(start_x, frame_width - 1))
         start_y = max(0, min(start_y, frame_height - 1))
         end_x = max(start_x + 1, min(end_x, frame_width))
         end_y = max(start_y + 1, min(end_y, frame_height))
         
-        # 裁切图像
+        # Crop image
         return frame[start_y:end_y, start_x:end_x]
     
-    # 如果原始尺寸小于目标尺寸，调整目标尺寸为更小的值
+    # If original size is smaller than target size, adjust target size to smaller value
     if frame_width < target_width or frame_height < target_height:
-        print(f"警告: 原始帧尺寸({frame_width}x{frame_height})小于目标尺寸({target_width}x{target_height})，将调整目标尺寸")
-        # 调整目标尺寸为原始尺寸和目标尺寸中较小的值
+        print(f"Warning: Original frame size({frame_width}x{frame_height}) is smaller than target size({target_width}x{target_height}), will adjust target size")
+        # Adjust target size to minimum of original and target sizes
         target_width = min(frame_width, target_width)
         target_height = min(frame_height, target_height)
     
-    # 计算裁切区域
+    # Calculate crop region
     if mode == 'center':
-        # 从中心裁切
+        # Crop from center
         start_x = (frame_width - target_width) // 2
         start_y = (frame_height - target_height) // 2
     elif mode == 'left':
-        # 从左侧裁切
+        # Crop from left
         start_x = 0
         start_y = (frame_height - target_height) // 2
     elif mode == 'right':
-        # 从右侧裁切
+        # Crop from right
         start_x = frame_width - target_width
         start_y = (frame_height - target_height) // 2
     elif mode == 'top':
-        # 从顶部裁切
+        # Crop from top
         start_x = (frame_width - target_width) // 2
         start_y = 0
     elif mode == 'bottom':
-        # 从底部裁切
+        # Crop from bottom
         start_x = (frame_width - target_width) // 2
         start_y = frame_height - target_height
     else:
-        raise ValueError(f"不支持的裁切模式: {mode}")
+        raise ValueError(f"Unsupported crop mode: {mode}")
     
-    # 确保起始坐标不为负
+    # Ensure starting coordinates are not negative
     start_x = max(0, start_x)
     start_y = max(0, start_y)
     
-    # 确保不超出图像边界
+    # Ensure not exceeding image boundaries
     if start_x + target_width > frame_width:
         start_x = frame_width - target_width
     if start_y + target_height > frame_height:
         start_y = frame_height - target_height
     
-    # 裁切图像
+    # Crop image
     cropped_frame = frame[start_y:start_y+target_height, start_x:start_x+target_width]
     
     return cropped_frame
@@ -172,14 +172,13 @@ def crop_frame(frame, target_width=720, target_height=720, mode='center', points
 def get_script_directory():
     script_path = os.path.abspath(__file__)
     directory = os.path.dirname(script_path)
-    print(f"脚本目录: {directory}")
+    print(f"Script directory: {directory}")
     return directory
 
 
 class WasteClassifier:
     def __init__(self):
-        # 分类名称
-
+        # Classification names
         self.class_names = {
             0: "food waste",
             1: "recyclable trash",
@@ -187,30 +186,30 @@ class WasteClassifier:
             3: "Other garbage",
         }
         self.category_mapping = None
-        # 分类名称对应的描述(可选)
+        # Classification descriptions (optional)
         self.category_descriptions = {
             0: "food waste",
-            1: "recyclable tras",
+            1: "recyclable trash",
             2: "harmful garbage",
             3: "Other garbage",
         }
 
     def get_category_info(self, class_id):
         """
-        获取给定类别ID的分类信息
-        返回: (分类名称, 分类描述)
+        Get classification information for given class ID
+        Returns: (category name, category description)
         """
-        category_name = self.class_names.get(class_id, "未知分类")
-        description = self.category_descriptions.get(class_id, "未知描述")
+        category_name = self.class_names.get(class_id, "Unknown classification")
+        description = self.category_descriptions.get(class_id, "Unknown description")
 
         return category_name, description
 
     def print_classification(self, class_id):
-        """打印分类信息"""
+        """Print classification information"""
         category_name, description = self.get_category_info(class_id)
-        print(f"\n垃圾分类信息:")
-        print(f"分类类别: {category_name}")
-        print(f"分类说明: {description}")
+        print(f"\nWaste classification information:")
+        print(f"Category: {category_name}")
+        print(f"Description: {description}")
         print("-" * 30)
 
         return f"{category_name}"
