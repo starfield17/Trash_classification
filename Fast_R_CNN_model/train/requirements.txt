@@ -1,0 +1,7 @@
+# requirements.txt
+torch
+torchvision 
+tqdm
+opencv-python
+numpy
+scikit-learn
