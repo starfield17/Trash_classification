@@ -1,0 +1,101 @@
+# YOLO Training Configuration Template
+# This file contains all configurable parameters for YOLO training
+# Copy this file and modify as needed for your specific use case
+
+# Model Settings
+model_name: yolo11s.pt  # Options: yolo11n.pt, yolo11s.pt, yolo11m.pt, yolo11l.pt, yolo11x.pt
+
+# Preset Configuration
+# Options: default, large_dataset, small_dataset, focus_accuracy, focus_speed, servermode
+preset: default
+
+# Dataset Settings
+data_path: ./label  # Path to your dataset directory
+train_split: 0.9    # Proportion of data for training
+val_split: 0.05     # Proportion of data for validation  
+test_split: 0.05    # Proportion of data for testing
+use_symlinks: true  # Use symbolic links instead of copying files (saves disk space)
+
+# Training Parameters
+epochs: 120         # Number of training epochs
+batch_size: 10      # Batch size (adjust based on GPU memory)
+imgsz: 640         # Input image size (320, 416, 512, 640, 768, 1024)
+device: auto       # Device to use (auto, cpu, 0, 1, 2, 3...)
+workers: -1        # Number of worker threads (-1 for auto)
+
+# Optimization Parameters
+optimizer: AdamW    # Optimizer (Adam, AdamW, SGD, RMSProp)
+lr0: 0.0005        # Initial learning rate
+lrf: 0.01          # Final learning rate ratio
+momentum: 0.937    # Optimizer momentum
+weight_decay: 0.0005  # Weight decay (L2 regularization)
+
+# Loss Weights
+box: 4.0           # Bounding box loss weight
+cls: 2.0           # Classification loss weight
+dfl: 1.5           # Distribution focal loss weight
+
+# Training Options
+patience: 15       # Early stopping patience (epochs)
+save_period: 5     # Save checkpoint every N epochs
+warmup_epochs: 10  # Number of warmup epochs
+warmup_momentum: 0.5  # Warmup momentum
+warmup_bias_lr: 0.05  # Warmup bias learning rate
+
+# Data Augmentation Settings
+use_augmentation: false  # Enable/disable augmentation
+degrees: 10.0      # Random rotation angle range
+scale: 0.2         # Random scaling ratio range
+fliplr: 0.2        # Horizontal flip probability
+flipud: 0.2        # Vertical flip probability
+
+# Advanced Settings
+use_mixed_precision: false  # Use FP16 mixed precision training
+multi_scale: true   # Multi-scale training
+rect: true         # Rectangular training (faster)
+cache: true        # Cache images in memory
+close_mosaic: 0    # Disable mosaic augmentation for last N epochs
+overlap_mask: false  # Use overlap masks for segmentation
+single_cls: false  # Treat all classes as single class
+dropout: 0.0       # Dropout rate
+cos_lr: false      # Use cosine learning rate scheduler
+
+# Output Settings
+project: ""        # Project directory (empty for current directory)
+name: runs/train   # Run name/subdirectory
+exist_ok: true     # Overwrite existing results
+resume: false      # Resume from last checkpoint
+
+# Configuration Presets Explained:
+# 
+# default: Balanced settings for general use
+# 
+# large_dataset: Optimized for datasets with >10,000 images
+#   - Higher batch size (32)
+#   - Higher learning rate (0.001)
+#   - More epochs (150)
+#   - Higher patience (30)
+# 
+# small_dataset: Optimized for datasets with <1,000 images
+#   - Smaller batch size (16)
+#   - Lower learning rate (0.0001)
+#   - Higher weight decay (0.001)
+#   - More warmup epochs (15)
+# 
+# focus_accuracy: Maximum accuracy, slower training
+#   - Larger image size (640)
+#   - Higher loss weights
+#   - More epochs (300)
+#   - Dropout enabled (0.1)
+# 
+# focus_speed: Faster training, may sacrifice some accuracy
+#   - Smaller image size (512)
+#   - Larger batch size (48)
+#   - Fewer patience epochs
+# 
+# servermode: Optimized for high-performance servers
+#   - All accuracy optimizations
+#   - Large batch size (32)
+#   - Mixed precision enabled
+#   - RAM caching
+#   - Cosine LR scheduler
