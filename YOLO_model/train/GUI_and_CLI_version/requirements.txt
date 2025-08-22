@@ -1,0 +1,11 @@
+# Core training stack
+ultralytics
+torch
+
+# Data & utilities
+opencv-python
+scikit-learn
+pyyaml
+
+# GUI (optional; needed for train_gui.py)
+PyQt6
