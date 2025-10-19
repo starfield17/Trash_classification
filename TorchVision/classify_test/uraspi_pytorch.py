@@ -4,20 +4,20 @@ import torch
 import json
 import serial
 
-# 全局控制变量
+# Global control variables
 DEBUG_WINDOW = False
 ENABLE_SERIAL = True
-THREADS=4
-# 串口配置
+THREADS = 4
+# Serial port configuration
 SERIAL_PORT = '/dev/ttyS0'
 SERIAL_BAUD = 9600
 
 def setup_gpu():
     if not torch.cuda.is_available():
-        return False, "未检测到GPU，将使用CPU进行推理"
+        return False, "GPU not detected, will use CPU for inference"
     
     device_name = torch.cuda.get_device_name(0)
-    return True, f"已启用GPU: {device_name}"
+    return True, f"GPU enabled: {device_name}"
 
 class GarbageDetectorPyTorch:
     def __init__(self, model_path, labels_path, num_threads):
@@ -33,19 +33,19 @@ class GarbageDetectorPyTorch:
         self.IMG_SIZE = 224
         
         self.categories = {
-            '其他垃圾': {'color': (128, 128, 128), 'code': '0'},
-            '厨余垃圾': {'color': (0, 255, 0), 'code': '1'},
-            '可回收物': {'color': (0, 0, 255), 'code': '2'},
-            '有害垃圾': {'color': (255, 0, 0), 'code': '3'}
+            'Other Waste': {'color': (128, 128, 128), 'code': '0'},
+            'Kitchen Waste': {'color': (0, 255, 0), 'code': '1'},
+            'Recyclables': {'color': (0, 0, 255), 'code': '2'},
+            'Hazardous Waste': {'color': (255, 0, 0), 'code': '3'}
         }
         
         self.serial_port = None
         if ENABLE_SERIAL:
             try:
                 self.serial_port = serial.Serial(SERIAL_PORT, SERIAL_BAUD)
-                print(f"串口已初始化: {SERIAL_PORT}")
+                print(f"Serial port initialized: {SERIAL_PORT}")
             except Exception as e:
-                print(f"串口初始化失败: {str(e)}")
+                print(f"Serial port initialization failed: {str(e)}")
                 self.serial_port = None
 
     def preprocess_image(self, img):
@@ -68,9 +68,9 @@ class GarbageDetectorPyTorch:
             try:
                 code = self.categories[category]['code']
                 self.serial_port.write(code.encode())
-                print(f"串口输出: {code}")
+                print(f"Serial output: {code}")
             except Exception as e:
-                print(f"串口输出失败: {str(e)}")
+                print(f"Serial output failed: {str(e)}")
 
     def detect(self, frame):
         height, width = frame.shape[:2]
@@ -91,7 +91,7 @@ class GarbageDetectorPyTorch:
             class_id = torch.argmax(probabilities).item()
             confidence = probabilities[class_id].item()
         
-        label = self.labels.get(str(class_id), "未知类别")
+        label = self.labels.get(str(class_id), "Unknown category")
         category = self.get_category(label)
         
         if confidence > 0.5:
@@ -104,9 +104,9 @@ class GarbageDetectorPyTorch:
                 thickness = 2
                 padding = 10
                 
-                text_category = f"类别: {category}"
-                text_item = f"物品: {label.split('/')[-1]}"
-                text_conf = f"置信度: {confidence:.1%}"
+                text_category = f"Category: {category}"
+                text_item = f"Item: {label.split('/')[-1]}"
+                text_conf = f"Confidence: {confidence:.1%}"
                 
                 y_offset = y1 - padding
                 for text in [text_conf, text_item, text_category]:
@@ -123,10 +123,10 @@ class GarbageDetectorPyTorch:
                               (x1 + padding, y_offset + h),
                               font, font_scale, color, thickness)
             
-            print("\n检测结果:")
-            print(f"类别: {category}")
-            print(f"物品: {label.split('/')[-1]}")
-            print(f"置信度: {confidence:.1%}")
+            print("\nDetection result:")
+            print(f"Category: {category}")
+            print(f"Item: {label.split('/')[-1]}")
+            print(f"Confidence: {confidence:.1%}")
             print("-" * 30)
             
             self.send_serial_data(category)
@@ -137,16 +137,16 @@ def find_camera():
     for index in range(101):
         cap = cv2.VideoCapture(index)
         if cap.isOpened():
-            print(f"成功找到可用摄像头，索引为: {index}")
+            print(f"Successfully found available camera, index: {index}")
             return cap
         cap.release()
     
-    print("错误: 未找到任何可用的摄像头")
+    print("Error: No available camera found")
     return None
 
 def main():
     use_gpu, device_info = setup_gpu()
-    print("\n设备信息:")
+    print("\nDevice information:")
     print(device_info)
     print("-" * 30)
 
@@ -161,23 +161,23 @@ def main():
         return
     
     if DEBUG_WINDOW:
-        window_name = '垃圾分类检测'
+        window_name = 'Garbage Classification Detection'
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, 800, 600)
     
-    print("\n系统启动:")
-    print("- 摄像头已就绪")
-    print(f"- 调试窗口: {'开启' if DEBUG_WINDOW else '关闭'}")
-    print(f"- 串口输出: {'开启' if ENABLE_SERIAL else '关闭'}")
-    print("- 按 'q' 键退出程序")
-    print("- 将物品放置在画面中心区域")
+    print("\nSystem started:")
+    print("- Camera ready")
+    print(f"- Debug window: {'Enabled' if DEBUG_WINDOW else 'Disabled'}")
+    print(f"- Serial output: {'Enabled' if ENABLE_SERIAL else 'Disabled'}")
+    print("- Press 'q' to exit program")
+    print("- Place item in center area of view")
     print("-" * 30)
     
     try:
         while True:
             ret, frame = cap.read()
             if not ret:
-                print("错误: 无法读取摄像头画面")
+                print("Error: Unable to read camera frame")
                 break
             
             frame = detector.detect(frame)
@@ -185,11 +185,11 @@ def main():
             if DEBUG_WINDOW:
                 cv2.imshow(window_name, frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    print("\n程序正常退出")
+                    print("\nProgram exited normally")
                     break
             
     except KeyboardInterrupt:
-        print("\n检测到键盘中断,程序退出")
+        print("\nKeyboard interrupt detected, program exiting")
     finally:
         cap.release()
         if DEBUG_WINDOW:
